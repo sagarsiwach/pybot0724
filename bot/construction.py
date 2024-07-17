@@ -69,14 +69,19 @@ async def construct_and_upgrade_building(cookies, position_id, building_id, loop
 async def construct_capital(cookies, village_id, conn):
     buildings = get_buildings(conn)
     await switch_village(cookies, village_id)
+
     for building in buildings:
         pid = building[0]
         bid = building[1]
         loop = building[2]
+
         if pid <= 18:  # Resource fields
             await build_or_upgrade_resource(cookies, position_id=pid, loop=loop)
         else:  # Other buildings
-            await construct_and_upgrade_building(cookies, position_id=pid, building_id=bid, loops=loop)
+            for _ in range(loop):
+                response = await construct_and_upgrade_building(cookies, position_id=pid, building_id=bid, loops=1)
+                if response is None:
+                    break
 
 async def research_academy(cookies):
     async with httpx.AsyncClient(cookies=cookies) as client:
@@ -129,5 +134,5 @@ async def upgrade_smithy(cookies):
                 if troop_level < 20:
                     upgrade_url = f"{base_url}/{link['href']}"
                     await client.get(upgrade_url)
-                    logging.info(f"Upgrading {troop_info.split('(')[0].strip()} to level {troop_level + 1} in the Smithy")
+                    logging.info(f"Upgrading {troop_info.split('('')[0].strip()} to level {troop_level + 1} in the Smithy")
                     break
