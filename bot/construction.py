@@ -129,5 +129,5 @@ async def upgrade_smithy(cookies):
                 if troop_level < 20:
                     upgrade_url = f"{base_url}/{link['href']}"
                     await client.get(upgrade_url)
-                    logging.info(f"Upgrading {troop_info.split('(')[0].strip()} to level {troop_level + 1} in the Smithy")
+                    logging.info(f"Upgrading {troop_info.split('('')[0].strip()} to level {troop_level + 1} in the Smithy")
                     break

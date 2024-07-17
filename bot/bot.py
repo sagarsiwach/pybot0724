@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 async def main_menu(username, password):
     conn = init_db()
-
     cookies = await login(username, password, conn)
 
     while True:
