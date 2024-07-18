@@ -1,7 +1,7 @@
 import asyncio
 import httpx
 from bs4 import BeautifulSoup
-from login import login
+from session_manager import SessionManager
 from database import save_task, save_stats
 import logging
 import time
@@ -9,12 +9,16 @@ import time
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Suppress httpx logging
 httpx_logger = logging.getLogger("httpx")
 httpx_logger.setLevel(logging.WARNING)
 
+
 async def increase_storage_async(username, password, loops, conn):
-    cookies = await login(username, password, conn)
+    """
+    Increase storage resources.
+    """
+    session_manager = SessionManager(username, password, conn)
+    cookies = await session_manager.get_cookies()
     if not cookies:
         return
 

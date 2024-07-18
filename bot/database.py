@@ -1,7 +1,7 @@
 import sqlite3
 
 def init_db():
-    conn = sqlite3.connect('game.db')
+    conn = sqlite3.connect('data.db')
     cursor = conn.cursor()
 
     cursor.execute('''
@@ -83,42 +83,81 @@ def save_user(conn, username, password):
     cursor.execute("INSERT OR IGNORE INTO users (username, password) VALUES (?, ?)", (username, password))
     conn.commit()
 
+def get_all_users(conn):
+    cursor = conn.cursor()
+    cursor.execute("SELECT username FROM users")
+    return cursor.fetchall()
+
+
 def save_task(conn, username, task_type, loops):
+    """
+    Save a task to the database.
+    """
     cursor = conn.cursor()
     cursor.execute("INSERT INTO tasks (username, task_type, loops) VALUES (?, ?, ?)", (username, task_type, loops))
     conn.commit()
 
+
 def save_stats(conn, username, task_type, requested, completed):
+    """
+    Save statistics to the database.
+    """
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO stats (username, task_type, requested, completed) VALUES (?, ?, ?, ?)", (username, task_type, requested, completed))
+    cursor.execute("INSERT INTO stats (username, task_type, requested, completed) VALUES (?, ?, ?, ?)",
+                   (username, task_type, requested, completed))
     conn.commit()
+
 
 def save_village(conn, username, village_id, village_name, x_coord, y_coord):
+    """
+    Save a village's information to the database.
+    """
     cursor = conn.cursor()
-    cursor.execute("INSERT OR REPLACE INTO villages (username, village_id, village_name, x_coord, y_coord) VALUES (?, ?, ?, ?, ?)", (username, village_id, village_name, x_coord, y_coord))
+    cursor.execute("INSERT OR REPLACE INTO villages (username, village_id, village_name, x_coord, y_coord) VALUES (?, ?, ?, ?, ?)",
+                   (username, village_id, village_name, x_coord, y_coord))
     conn.commit()
 
+
 def get_user(conn, username):
+    """
+    Retrieve a user's information from the database.
+    """
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM users WHERE username=?", (username,))
     return cursor.fetchone()
 
+
 def get_tasks(conn, username):
+    """
+    Retrieve all tasks for a user from the database.
+    """
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM tasks WHERE username=?", (username,))
     return cursor.fetchall()
 
+
 def get_stats(conn, username):
+    """
+    Retrieve all statistics for a user from the database.
+    """
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM stats WHERE username=?", (username,))
     return cursor.fetchall()
 
+
 def get_villages(conn, username):
+    """
+    Retrieve all villages for a user from the database.
+    """
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM villages WHERE username=?", (username,))
     return cursor.fetchall()
 
+
 def get_buildings(conn):
+    """
+    Retrieve all buildings from the database.
+    """
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM buildings")
     return cursor.fetchall()

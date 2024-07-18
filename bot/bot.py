@@ -1,69 +1,159 @@
 import asyncio
-import sqlite3
-from login import login
+import logging
+from session_manager import SessionManager
 from village import fetch_villages, rename_village
 from construction import construct_capital, research_academy, upgrade_smithy, upgrade_armory
 from storage import increase_storage_async
 from production import increase_production_async
-from database import init_db, save_user
-import logging
+from database import init_db, get_all_users
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-async def main_menu(username, password):
-    conn = init_db()
-    cookies = await login(username, password, conn)
+async def main_menu(session_manager):
+    """
+    Display the main menu and handle user actions.
+    """
+    await session_manager.login()
 
     while True:
         print("\nMain Menu")
         print("1. Increase Storage")
         print("2. Increase Production")
-        print("3. Fetch Villages")
-        print("4. Rename Villages")
-        print("5. Construct Capital")
-        print("6. Research Academy")
-        print("7. Upgrade Smithy")
-        print("8. Upgrade Armory")
-        print("9. Exit")
+        print("3. Combined Operations")
+        print("4. Fetch Villages")
+        print("5. Rename Villages")
+        print("6. Construct Capital")
+        print("7. Research Academy")
+        print("8. Upgrade Smithy")
+        print("9. Upgrade Armory")
+        print("0. Exit")
         action = input("Select an action: ")
 
         if action == '1':
-            loops = int(input("Number of loops: "))
-            await increase_storage_async(username, password, loops, conn)
+            while True:
+                print("\nStorage Menu")
+                print("1. Single Operation")
+                print("2. Loop until Escape")
+                print("9. Back to Main Menu")
+                sub_action = input("Select sub-action: ")
+                if sub_action == '9':
+                    break
+                loops = int(input("Number of loops: "))
+                if sub_action == '1':
+                    await increase_storage_async(session_manager.username, session_manager.password, loops, session_manager.conn)
+                elif sub_action == '2':
+                    loop_task = asyncio.create_task(loop_task_until_escape('1', session_manager, logger.info))
+                    try:
+                        await asyncio.gather(loop_task)
+                    except asyncio.CancelledError:
+                        loop_task.cancel()
+                        await loop_task
+
         elif action == '2':
-            loops = int(input("Number of loops: "))
-            await increase_production_async(username, password, loops, conn)
+            while True:
+                print("\nProduction Menu")
+                print("1. Single Operation")
+                print("2. Loop until Escape")
+                print("9. Back to Main Menu")
+                sub_action = input("Select sub-action: ")
+                if sub_action == '9':
+                    break
+                loops = int(input("Number of loops: "))
+                if sub_action == '1':
+                    await increase_production_async(session_manager.username, session_manager.password, loops, session_manager.conn)
+                elif sub_action == '2':
+                    loop_task = asyncio.create_task(loop_task_until_escape('2', session_manager, logger.info))
+                    try:
+                        await asyncio.gather(loop_task)
+                    except asyncio.CancelledError:
+                        loop_task.cancel()
+                        await loop_task
+
         elif action == '3':
-            villages = await fetch_villages(username, password, cookies, conn)
-            for village in villages:
-                logging.info(f"Village: {village}")
+            while True:
+                print("\nCombined Operations Menu")
+                print("1. Equal Prod + Storage: 6250 of production and 1250 of Storage")
+                print("2. Production++: 20000 of production and 2000 of Storage")
+                print("3. Storage++: 25000 of storage and 6250 of production")
+                print("9. Back to Main Menu")
+                combined_action = input("Select combined action: ")
+                if combined_action == '9':
+                    break
+                if combined_action == '1':
+                    await increase_production_async(session_manager.username, session_manager.password, 6250, session_manager.conn)
+                    await increase_storage_async(session_manager.username, session_manager.password, 1250, session_manager.conn)
+                elif combined_action == '2':
+                    await increase_production_async(session_manager.username, session_manager.password, 20000, session_manager.conn)
+                    await increase_storage_async(session_manager.username, session_manager.password, 2000, session_manager.conn)
+                elif combined_action == '3':
+                    await increase_storage_async(session_manager.username, session_manager.password, 25000, session_manager.conn)
+                    await increase_production_async(session_manager.username, session_manager.password, 6250, session_manager.conn)
+
         elif action == '4':
-            villages = await fetch_villages(username, password, cookies, conn)
-            for village in villages:
-                new_name = input(f"Enter new name for village {village[0]} (ID: {village[1]}): ")
-                await rename_village(cookies, village[1], new_name)
+            await fetch_villages(session_manager.username, session_manager, session_manager.conn)
+
         elif action == '5':
-            villages = await fetch_villages(username, password, cookies, conn)
+            await rename_village(session_manager, session_manager.conn, session_manager.username)
+
+        elif action == '6':
+            villages = await fetch_villages(session_manager.username, session_manager, session_manager.conn)
             capital = next((v for v in villages if 'Capital' in v[0]), None)
             if capital:
-                await construct_capital(cookies, capital[1], conn)
+                await construct_capital(session_manager, capital[1], session_manager.conn)
             else:
                 print("No capital village found.")
-        elif action == '6':
-            await research_academy(cookies)
+
         elif action == '7':
-            await upgrade_smithy(cookies)
+            await research_academy(session_manager)
+
         elif action == '8':
-            await upgrade_armory(cookies)
+            await upgrade_smithy(session_manager)
+
         elif action == '9':
+            await upgrade_armory(session_manager)
+
+        elif action == '0':
             print("Exiting...")
             break
+
         else:
             print("Invalid action. Please try again.")
 
+async def login_menu():
+    """
+    Display the login menu and handle user login.
+    """
+    conn = init_db()
+    users = get_all_users(conn)
+    if users:
+        print("Select a user to login:")
+        for index, user in enumerate(users, start=1):
+            print(f"{index}. {user[0]}")
+
+        print(f"{len(users) + 1}. Login with new credentials")
+
+        user_choice = int(input("Enter your choice: ")) - 1
+        if 0 <= user_choice < len(users):
+            username = users[user_choice][0]
+            cursor = conn.cursor()
+            cursor.execute("SELECT password FROM users WHERE username = ?", (username,))
+            password = cursor.fetchone()[0]
+            return SessionManager(username, password, conn)
+        elif user_choice == len(users):
+            username = input("Username: ")
+            password = input("Password: ")
+            return SessionManager(username, password, conn)
+        else:
+            print("Invalid choice. Please try again.")
+            return await login_menu()
+    else:
+        print("No users found in the database.")
+        username = input("Username: ")
+        password = input("Password: ")
+        return SessionManager(username, password, conn)
+
 if __name__ == "__main__":
     print("Welcome to Bot for Fun Server")
-    username = input("Username: ")
-    password = input("Password: ")
-    asyncio.run(main_menu(username, password))
+    session_manager = asyncio.run(login_menu())
+    asyncio.run(main_menu(session_manager))
