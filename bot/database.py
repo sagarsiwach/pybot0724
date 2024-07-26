@@ -170,7 +170,6 @@ def delete_all_users(conn):
     cursor.execute("DELETE FROM users")
     conn.commit()
 
-# database.py
 
 def delete_all_villages_for_user(conn, username):
     """

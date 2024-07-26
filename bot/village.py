@@ -1,7 +1,7 @@
 import httpx
 from bs4 import BeautifulSoup
 from tabulate import tabulate
-from database import save_village
+from database import save_village, delete_all_villages_for_user
 import logging
 from utils import switch_village
 from requests_toolbelt.multipart.encoder import MultipartEncoder
