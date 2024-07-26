@@ -75,6 +75,12 @@ def init_db():
 
     cursor.executemany('INSERT INTO buildings (pid, bid, tgt, name) VALUES (?, ?, ?, ?)', buildings)
 
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS empty_spots (
+            id INTEGER PRIMARY KEY,
+            settled INTEGER
+        )''')
+
     conn.commit()
     return conn
 
@@ -177,4 +183,19 @@ def delete_all_villages_for_user(conn, username):
     """
     cursor = conn.cursor()
     cursor.execute("DELETE FROM villages WHERE username=?", (username,))
+    conn.commit()
+
+def save_empty_spot(conn, village_id, settled):
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO empty_spots (id, settled) VALUES (?, ?)", (village_id, settled))
+    conn.commit()
+
+def get_all_empty_spots(conn):
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM empty_spots")
+    return cursor.fetchall()
+
+def delete_all_empty_spots(conn):
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM empty_spots")
     conn.commit()

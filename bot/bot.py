@@ -7,8 +7,9 @@ from village import fetch_villages, rename_village
 from construction import construct_capital, construct_village, research_academy, upgrade_smithy, upgrade_armory
 from storage import increase_storage_async
 from production import increase_production_async
-from database import init_db, get_all_users, delete_all_users
-from attack_village import select_and_attack_village  # Add this import
+from database import init_db, get_all_users, delete_all_users, get_all_empty_spots
+from map_finder import generate_spiral_village_ids, find_empty_village_spots
+import httpx
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -34,8 +35,23 @@ async def main_menu(session_manager):
         print("11. Forget All Usernames")
         print("12. Fetch All Player Villages")
         print("13. Attack Village")
+        print("14. Find Empty Village Spots")
         print("0. Exit")
         action = input("Select an action: ")
+
+        if action == '14':
+            villages = await fetch_villages(session_manager.username, session_manager, session_manager.conn)
+            capital = next((v for v in villages if 'Capital' in v[0]), None)
+            if capital:
+                center_village_id = capital[1]
+                potential_village_ids = generate_spiral_village_ids(center_village_id)
+                await find_empty_village_spots(await session_manager.get_cookies(), potential_village_ids, session_manager.conn)
+                empty_spots = get_all_empty_spots(session_manager.conn)
+                print("Empty village spots:")
+                for spot in empty_spots:
+                    print(f"Village ID: {spot[0]}, Settled: {spot[1]}")
+            else:
+                print("No capital village found.")
 
         if action == '1':
             while True:
