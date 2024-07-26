@@ -43,7 +43,7 @@ async def main_menu(session_manager):
             villages = await fetch_villages(session_manager.username, session_manager, session_manager.conn)
             capital = next((v for v in villages if 'Capital' in v[0]), None)
             if capital:
-                center_village_id = capital[1]
+                center_village_id = int(capital[1])  # Ensure the ID is an integer
                 potential_village_ids = generate_spiral_village_ids(center_village_id)
                 await find_empty_village_spots(await session_manager.get_cookies(), potential_village_ids, session_manager.conn)
                 empty_spots = get_all_empty_spots(session_manager.conn)
@@ -52,6 +52,7 @@ async def main_menu(session_manager):
                     print(f"Village ID: {spot[0]}, Settled: {spot[1]}")
             else:
                 print("No capital village found.")
+
 
         if action == '1':
             while True:
