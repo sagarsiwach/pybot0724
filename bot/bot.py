@@ -1,11 +1,14 @@
+# bot.py
+
 import asyncio
 import logging
 from session_manager import SessionManager
 from village import fetch_villages, rename_village
-from construction import construct_capital, research_academy, upgrade_smithy, upgrade_armory
+from construction import construct_capital, construct_village, research_academy, upgrade_smithy, upgrade_armory
 from storage import increase_storage_async
 from production import increase_production_async
-from database import init_db, get_all_users
+from database import init_db, get_all_users, delete_all_users
+from attack_village import select_and_attack_village  # Add this import
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -24,9 +27,13 @@ async def main_menu(session_manager):
         print("4. Fetch Villages")
         print("5. Rename Villages")
         print("6. Construct Capital")
-        print("7. Research Academy")
-        print("8. Upgrade Smithy")
-        print("9. Upgrade Armory")
+        print("7. Construct Village")
+        print("8. Research Academy")
+        print("9. Upgrade Smithy")
+        print("10. Upgrade Armory")
+        print("11. Forget All Usernames")
+        print("12. Fetch All Player Villages")
+        print("13. Attack Village")
         print("0. Exit")
         action = input("Select an action: ")
 
@@ -105,13 +112,35 @@ async def main_menu(session_manager):
                 print("No capital village found.")
 
         elif action == '7':
-            await research_academy(session_manager)
+            villages = await fetch_villages(session_manager.username, session_manager, session_manager.conn)
+            print("Select a village to construct:")
+            for index, village in enumerate(villages):
+                print(f"{index + 1}. {village[0]} (ID: {village[1]})")
+            village_choice = int(input("Enter your choice: ")) - 1
+            if 0 <= village_choice < len(villages):
+                selected_village = villages[village_choice]
+                await construct_village(session_manager, selected_village[1], session_manager.conn)
+            else:
+                print("Invalid choice. Please try again.")
 
         elif action == '8':
-            await upgrade_smithy(session_manager)
+            await research_academy(session_manager)
 
         elif action == '9':
+            await upgrade_smithy(session_manager)
+
+        elif action == '10':
             await upgrade_armory(session_manager)
+
+        elif action == '11':
+            delete_all_users(session_manager.conn)
+            print("All saved usernames have been deleted.")
+
+        elif action == '12':
+            await fetch_villages(session_manager.username, session_manager, session_manager.conn)
+
+        elif action == '13':
+            await select_and_attack_village(session_manager, session_manager.conn)
 
         elif action == '0':
             print("Exiting...")
@@ -125,33 +154,44 @@ async def login_menu():
     Display the login menu and handle user login.
     """
     conn = init_db()
-    users = get_all_users(conn)
-    if users:
-        print("Select a user to login:")
-        for index, user in enumerate(users, start=1):
-            print(f"{index}. {user[0]}")
+    while True:
+        print("Login Menu")
+        print("1. Select a user to login")
+        print("2. Login with new credentials")
+        print("3. Forget all saved usernames")
+        print("0. Exit")
+        choice = input("Enter your choice: ")
 
-        print(f"{len(users) + 1}. Login with new credentials")
+        if choice == '1':
+            users = get_all_users(conn)
+            if users:
+                print("Select a user to login:")
+                for index, user in enumerate(users, start=1):
+                    print(f"{index}. {user[0]}")
 
-        user_choice = int(input("Enter your choice: ")) - 1
-        if 0 <= user_choice < len(users):
-            username = users[user_choice][0]
-            cursor = conn.cursor()
-            cursor.execute("SELECT password FROM users WHERE username = ?", (username,))
-            password = cursor.fetchone()[0]
-            return SessionManager(username, password, conn)
-        elif user_choice == len(users):
+                user_choice = int(input("Enter your choice: ")) - 1
+                if 0 <= user_choice < len(users):
+                    username = users[user_choice][0]
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT password FROM users WHERE username = ?", (username,))
+                    password = cursor.fetchone()[0]
+                    return SessionManager(username, password, conn)
+                else:
+                    print("Invalid choice. Please try again.")
+            else:
+                print("No users found in the database.")
+        elif choice == '2':
             username = input("Username: ")
             password = input("Password: ")
             return SessionManager(username, password, conn)
+        elif choice == '3':
+            delete_all_users(conn)
+            print("All saved usernames have been deleted.")
+        elif choice == '0':
+            print("Exiting...")
+            exit()
         else:
             print("Invalid choice. Please try again.")
-            return await login_menu()
-    else:
-        print("No users found in the database.")
-        username = input("Username: ")
-        password = input("Password: ")
-        return SessionManager(username, password, conn)
 
 if __name__ == "__main__":
     print("Welcome to Bot for Fun Server")

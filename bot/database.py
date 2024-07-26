@@ -161,3 +161,21 @@ def get_buildings(conn):
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM buildings")
     return cursor.fetchall()
+
+def delete_all_users(conn):
+    """
+    Delete all saved usernames from the database.
+    """
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM users")
+    conn.commit()
+
+# database.py
+
+def delete_all_villages_for_user(conn, username):
+    """
+    Delete all village data for a specific user.
+    """
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM villages WHERE username=?", (username,))
+    conn.commit()

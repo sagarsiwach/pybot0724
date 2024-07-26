@@ -1,3 +1,4 @@
+# construction.py
 import httpx
 import logging
 from bs4 import BeautifulSoup
@@ -67,6 +68,22 @@ async def construct_and_upgrade_building(cookies, position_id, building_id, loop
 async def construct_capital(session_manager, village_id, conn):
     """
     Construct and upgrade buildings in the capital village.
+    """
+    buildings = get_buildings(conn)
+    await switch_village(session_manager, village_id)
+    cookies = await session_manager.get_cookies()
+    for building in buildings:
+        pid = building[0]
+        bid = building[1]
+        loop = building[2]
+        if pid <= 18:  # Resource fields
+            await build_or_upgrade_resource(cookies, position_id=pid, loop=loop)
+        else:  # Other buildings
+            await construct_and_upgrade_building(cookies, position_id=pid, building_id=bid, loops=loop)
+
+async def construct_village(session_manager, village_id, conn):
+    """
+    Construct and upgrade buildings in a selected village.
     """
     buildings = get_buildings(conn)
     await switch_village(session_manager, village_id)

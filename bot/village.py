@@ -15,6 +15,9 @@ async def fetch_villages(username, session_manager, conn):
     """
     Fetch and save villages for a user.
     """
+    # Clear existing data for the user
+    delete_all_villages_for_user(conn, username)
+
     cookies = await session_manager.get_cookies()
     async with httpx.AsyncClient(cookies=cookies) as client:
         response = await client.get(f"{BASE_URL}/profile.php")
