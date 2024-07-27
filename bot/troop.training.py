@@ -1,5 +1,3 @@
-# troop_training.py
-
 import httpx
 import logging
 
