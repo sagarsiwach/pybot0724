@@ -1,3 +1,5 @@
+# session_manager.py
+
 import httpx
 import logging
 from database import save_user
@@ -23,9 +25,10 @@ class SessionManager:
     Manages login sessions and cookies for the application.
     """
 
-    def __init__(self, username, password, conn):
+    def __init__(self, username, password, civilization, conn):
         self.username = username
         self.password = password
+        self.civilization = civilization
         self.conn = conn
         self.cookies = None
 

@@ -10,6 +10,8 @@ from production import increase_production_async
 from database import init_db, get_all_users, delete_all_users, get_all_empty_spots
 from map_finder import generate_spiral_village_ids, find_empty_village_spots
 from fetch_all_villages import fetch_and_store_all_villages
+from attack_village import select_and_attack_village
+from troop_training import train_troops
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -36,6 +38,7 @@ async def main_menu(session_manager):
         print("12. Fetch All Player Villages")
         print("13. Attack Village")
         print("14. Find Empty Village Spots")
+        print("15. Train Troops")
         print("0. Exit")
         action = input("Select an action: ")
 
@@ -60,7 +63,10 @@ async def main_menu(session_manager):
             else:
                 print("No capital village found.")
 
-        if action == '1':
+        elif action == '15':
+            await train_troops_action(session_manager)
+
+        elif action == '1':
             while True:
                 print("\nStorage Menu")
                 print("1. Single Operation")
@@ -169,6 +175,24 @@ async def main_menu(session_manager):
         else:
             print("Invalid action. Please try again.")
 
+async def train_troops_action(session_manager):
+    """
+    Handle the troop training process.
+    """
+    villages = await fetch_villages(session_manager.username, session_manager, session_manager.conn)
+    print("\nAvailable Villages:")
+    for index, village in enumerate(villages):
+        print(f"{index + 1}. {village[0]} (ID: {village[1]})")
+    village_choice = int(input("Select a village to train troops in (enter the index): ")) - 1
+    if 0 <= village_choice < len(villages):
+        selected_village = villages[village_choice]
+        print(f"Selected village: {selected_village[0]} (ID: {selected_village[1]})")
+
+        troop_type = input("Enter the troop type to train: ")
+        await train_troops(await session_manager.get_cookies(), selected_village[1], session_manager.civilization, troop_type)
+    else:
+        print("Invalid choice. Returning to main menu.")
+
 async def login_menu():
     """
     Display the login menu and handle user login.
@@ -195,7 +219,8 @@ async def login_menu():
                     cursor = conn.cursor()
                     cursor.execute("SELECT password FROM users WHERE username = ?", (username,))
                     password = cursor.fetchone()[0]
-                    return SessionManager(username, password, conn)
+                    civilization = input("Enter your civilization (roman, teuton, gaul): ").strip().lower()
+                    return SessionManager(username, password, civilization, conn)
                 else:
                     print("Invalid choice. Please try again.")
             else:
@@ -203,7 +228,8 @@ async def login_menu():
         elif choice == '2':
             username = input("Username: ")
             password = input("Password: ")
-            return SessionManager(username, password, conn)
+            civilization = input("Enter your civilization (roman, teuton, gaul): ").strip().lower()
+            return SessionManager(username, password, civilization, conn)
         elif choice == '3':
             delete_all_users(conn)
             print("All saved usernames have been deleted.")
