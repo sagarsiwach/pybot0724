@@ -1,5 +1,7 @@
 import sqlite3
 
+import sqlite3
+
 def init_db():
     conn = sqlite3.connect('data.db')
     cursor = conn.cursor()
@@ -48,8 +50,28 @@ def init_db():
         name TEXT
     )''')
 
-    # Insert initial building data
+    # Insert initial building data including resource fields
     buildings = [
+        # Resource fields
+        (1, 0, 30, 'Woodcutter'),
+        (2, 0, 30, 'Woodcutter'),
+        (3, 0, 30, 'Woodcutter'),
+        (4, 0, 30, 'Woodcutter'),
+        (5, 0, 30, 'Clay Pit'),
+        (6, 0, 30, 'Clay Pit'),
+        (7, 0, 30, 'Clay Pit'),
+        (8, 0, 30, 'Clay Pit'),
+        (9, 0, 30, 'Iron Mine'),
+        (10, 0, 30, 'Iron Mine'),
+        (11, 0, 30, 'Iron Mine'),
+        (12, 0, 30, 'Iron Mine'),
+        (13, 0, 30, 'Cropland'),
+        (14, 0, 30, 'Cropland'),
+        (15, 0, 30, 'Cropland'),
+        (16, 0, 30, 'Cropland'),
+        (17, 0, 30, 'Cropland'),
+        (18, 0, 30, 'Cropland'),
+        # Existing buildings
         (26, 15, 20, 'Main Building'),
         (39, 16, 20, 'Rally Point'),
         (40, 33, 20, 'City Wall'),

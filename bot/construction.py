@@ -81,6 +81,7 @@ async def construct_capital(session_manager, village_id, conn):
         else:  # Other buildings
             await construct_and_upgrade_building(cookies, position_id=pid, building_id=bid, loops=loop)
 
+
 async def construct_village(session_manager, village_id, conn):
     """
     Construct and upgrade buildings in a selected village.
