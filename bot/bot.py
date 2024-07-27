@@ -9,7 +9,7 @@ from storage import increase_storage_async
 from production import increase_production_async
 from database import init_db, get_all_users, delete_all_users, get_all_empty_spots
 from map_finder import generate_spiral_village_ids, find_empty_village_spots
-import httpx
+from fetch_all_villages import fetch_and_store_all_villages
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -39,7 +39,11 @@ async def main_menu(session_manager):
         print("0. Exit")
         action = input("Select an action: ")
 
-        if action == '14':
+        if action == '12':
+            await fetch_and_store_all_villages(session_manager, session_manager.conn)
+            print("All player villages fetched and stored.")
+
+        elif action == '14':
             villages = await fetch_villages(session_manager.username, session_manager, session_manager.conn)
             capital = next((v for v in villages if 'Capital' in v[0]), None)
             if capital:
@@ -47,12 +51,14 @@ async def main_menu(session_manager):
                 potential_village_ids = generate_spiral_village_ids(center_village_id)
                 await find_empty_village_spots(await session_manager.get_cookies(), potential_village_ids, session_manager.conn)
                 empty_spots = get_all_empty_spots(session_manager.conn)
-                print("Empty village spots:")
+                print("+----------------+----------+")
+                print("|   Village ID   | Settled  |")
+                print("+----------------+----------+")
                 for spot in empty_spots:
-                    print(f"Village ID: {spot[0]}, Settled: {spot[1]}")
+                    print(f"| {spot[0]:14} | {spot[1]:8} |")
+                print("+----------------+----------+")
             else:
                 print("No capital village found.")
-
 
         if action == '1':
             while True:
@@ -152,9 +158,6 @@ async def main_menu(session_manager):
         elif action == '11':
             delete_all_users(session_manager.conn)
             print("All saved usernames have been deleted.")
-
-        elif action == '12':
-            await fetch_villages(session_manager.username, session_manager, session_manager.conn)
 
         elif action == '13':
             await select_and_attack_village(session_manager, session_manager.conn)
