@@ -2,6 +2,7 @@
 
 import httpx
 import logging
+import asyncio
 from .database import save_user
 
 INITIAL_BASE_URL = "https://gotravspeed.com"
@@ -32,55 +33,84 @@ class SessionManager:
         self.conn = conn
         self.cookies = None
 
-    async def login(self):
+    async def login(self, retries=3):
         """
         Perform the login operation and store cookies.
+        Retries on server errors.
         """
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            response = await client.get(INITIAL_BASE_URL, headers=HEADERS)
-            response.raise_for_status()
+        for attempt in range(retries):
+            try:
+                async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+                    response = await client.get(INITIAL_BASE_URL, headers=HEADERS)
+                    response.raise_for_status()
 
-            login_data = {
-                'name': self.username,
-                'password': self.password
-            }
-            response = await client.post(INITIAL_BASE_URL, data=login_data, headers=HEADERS)
-            if "Login failed" in response.text:
-                logger.error("Login failed")
+                    login_data = {
+                        'name': self.username,
+                        'password': self.password
+                    }
+                    response = await client.post(INITIAL_BASE_URL, data=login_data, headers=HEADERS)
+                    if "Login failed" in response.text:
+                        logger.error("Login failed - invalid credentials")
+                        return None
+                    logger.info("Login successful")
+
+                    response = await client.get(INITIAL_BASE_URL + "/game/servers", headers=HEADERS)
+                    response.raise_for_status()
+
+                    server_data = {
+                        'action': 'server',
+                        'value': '9'
+                    }
+                    response = await client.post(INITIAL_BASE_URL + "/game/servers", data=server_data, headers=HEADERS)
+                    response.raise_for_status()
+
+                    server_login_data = {
+                        'action': 'serverLogin',
+                        'value[pid]': '9',
+                        'value[server]': '9'
+                    }
+                    response = await client.post(INITIAL_BASE_URL + "/game/servers", data=server_login_data, headers=HEADERS)
+                    response.raise_for_status()
+
+                    response = await client.get(POST_LOGIN_BASE_URL + "/village1.php", headers=HEADERS)
+                    response.raise_for_status()
+
+                    logger.info("Successfully logged in and accessed the game page")
+                    save_user(self.conn, self.username, self.password)
+                    self.cookies = client.cookies
+
+                    return self.cookies
+                    
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code >= 500:
+                    logger.warning(f"Server error ({e.response.status_code}), attempt {attempt + 1}/{retries}")
+                    if attempt < retries - 1:
+                        await asyncio.sleep(2)  # Wait before retry
+                        continue
+                    else:
+                        logger.error(f"Server error after {retries} attempts: {e}")
+                        return None
+                else:
+                    logger.error(f"HTTP error: {e}")
+                    return None
+            except httpx.RequestError as e:
+                logger.warning(f"Network error, attempt {attempt + 1}/{retries}: {e}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(2)
+                    continue
+                else:
+                    logger.error(f"Network error after {retries} attempts: {e}")
+                    return None
+            except Exception as e:
+                logger.error(f"Unexpected error during login: {e}")
                 return None
-            logger.info("Login successful")
-
-            response = await client.get(INITIAL_BASE_URL + "/game/servers", headers=HEADERS)
-            response.raise_for_status()
-
-            server_data = {
-                'action': 'server',
-                'value': '9'
-            }
-            response = await client.post(INITIAL_BASE_URL + "/game/servers", data=server_data, headers=HEADERS)
-            response.raise_for_status()
-
-            server_login_data = {
-                'action': 'serverLogin',
-                'value[pid]': '9',
-                'value[server]': '9'
-            }
-            response = await client.post(INITIAL_BASE_URL + "/game/servers", data=server_login_data, headers=HEADERS)
-            response.raise_for_status()
-
-            response = await client.get(POST_LOGIN_BASE_URL + "/village1.php", headers=HEADERS)
-            response.raise_for_status()
-
-            logger.info("Successfully logged in and accessed the game page")
-            save_user(self.conn, self.username, self.password)
-            self.cookies = client.cookies
-
-        return self.cookies
+        
+        return None
 
     async def get_cookies(self):
         """
-        Get cookies, logging in if necessary.
+        Return stored cookies or login if not authenticated.
         """
-        if not self.cookies:
-            await self.login()
+        if self.cookies is None:
+            self.cookies = await self.login()
         return self.cookies

@@ -438,18 +438,31 @@ async def main():
     
     print("\n  Logging in...")
     
-    if await cli.login(username, password):
-        print("  Login successful!")
-        await asyncio.sleep(1)
-        await cli.main_menu()
-    else:
-        print("  Login failed!")
+    try:
+        if await cli.login(username, password):
+            print("  Login successful!")
+            await asyncio.sleep(1)
+            await cli.main_menu()
+        else:
+            print("\n  Login failed!")
+            print("  Possible causes:")
+            print("    - Invalid username/password")
+            print("    - Server is down or unreachable")
+            print("    - Network connection issue")
+            print("\n  Please try again later.")
+    except Exception as e:
+        print(f"\n  Error: {e}")
+        print("  Please check your network connection and try again.")
 
 
 def run():
     """Entry point for package."""
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n\n  Interrupted. Goodbye!")
 
 
 if __name__ == "__main__":
     run()
+
