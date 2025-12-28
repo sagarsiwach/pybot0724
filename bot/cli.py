@@ -1017,7 +1017,7 @@ async def main_auto():
     
     print(f"\n  Logging in as {username} to Fun server...")
     
-    cli = TravianCLI(username, password)
+    cli = TravianCLI()
     
     if await cli.login(username, password, server_id):
         print("  ✅ Connected!")
