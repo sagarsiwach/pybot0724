@@ -404,7 +404,9 @@ class TravianCLI:
         from bot.presets import PRESETS, get_preset_summary
         from bot.construction import upgrade_all_buildings, upgrade_all_resources, HEADERS
         
-        print("\n  Choose a Build Preset:\n")
+        print("\n  [0] Standard Upgrade (upgrade all existing buildings)")
+        print()
+        print("  --- Build Presets ---")
         for pid, preset in PRESETS.items():
             res_info = f"Resources→{preset['resource_target']}" if preset['resource_target'] else "Resources→SKIP"
             print(f"  [{pid}] {preset['name']}")
@@ -412,11 +414,30 @@ class TravianCLI:
             print(f"      {res_info} | {len(preset['buildings'])} buildings")
             print()
         
-        print("  [5] Custom Target Level (All existing buildings)")
+        print("  [d] Demolish (destroy a building)")
         print("  [b] Back")
         
         choice = input("\n  > ").strip().lower()
         if choice == 'b':
+            return
+        
+        if choice == '0':
+            # Standard upgrade - upgrade all existing buildings
+            target = input("  Target Level [20]: ").strip()
+            target = int(target) if target.isdigit() else 20
+            
+            async def standard_upgrade():
+                self.tm.log(f"Standard upgrade: upgrading all buildings to Lv {target}")
+                await upgrade_all_buildings(self.cookies, self.server_url, target, lambda msg: self.tm.log(msg))
+                self.tm.log("Standard upgrade complete!")
+            
+            self.tm.add_task(f"Standard Upgrade → Lv {target}", standard_upgrade())
+            print(f"\n  ✓ Standard upgrade started!")
+            await asyncio.sleep(1.5)
+            return
+        
+        if choice == 'd':
+            await self.demolish_menu()
             return
             
         task_name = "Village Build"
@@ -520,6 +541,54 @@ class TravianCLI:
                 print(f"  [{b['pos']:>2}] {b['name']:<20} Lv.{b['level']}")
         
         input("\n  Press Enter to continue...")
+
+    async def demolish_menu(self):
+        """Demolish/destroy a building."""
+        clear()
+        self.print_header()
+        print("\n  DEMOLISH BUILDING")
+        print("  " + "-" * 50)
+        print("  WARNING: This will destroy a building!")
+        
+        # Show current buildings
+        buildings = await self.fetch_buildings()
+        print("\n  Current buildings:")
+        for b in buildings:
+            if b['name'] and b['name'] != 'Empty' and 'construction' not in b['name'].lower():
+                print(f"  [{b['pos']:>2}] {b['name']:<20} Lv.{b['level']}")
+        
+        pos = input("\n  Enter building position to demolish (or 'b' to cancel): ").strip()
+        if pos.lower() == 'b':
+            return
+        
+        try:
+            pos = int(pos)
+            if pos < 19 or pos > 40:
+                print("  Invalid position!")
+                await asyncio.sleep(1)
+                return
+            
+            confirm = input(f"  Demolish building at position {pos}? [y/N]: ").strip().lower()
+            if confirm != 'y':
+                return
+            
+            async def demolish_task():
+                from bot.construction import demolish_building
+                self.tm.log(f"Demolishing building at position {pos}...")
+                success = await demolish_building(self.cookies, self.server_url, pos, lambda m: self.tm.log(m))
+                if success:
+                    self.tm.log(f"✓ Building at position {pos} demolished!")
+                else:
+                    self.tm.log(f"Failed to demolish building at {pos}")
+            
+            self.tm.add_task(f"Demolish pos {pos}", demolish_task())
+            print(f"\n  ✓ Demolishing in background!")
+            
+        except ValueError:
+            print("  Invalid position!")
+        
+        await asyncio.sleep(1.5)
+    
     
     async def research_academy(self):
         """Research in Academy."""

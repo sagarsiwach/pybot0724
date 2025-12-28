@@ -42,10 +42,11 @@ PRESET_ARMY = {
     "description": "Full military + Town Hall for celebrations. For your main attacking village.",
     "resource_target": 20,
     "buildings": [
-        # Core (always needed)
+        # PRIORITY ORDER: Main Building → Rally Point → Wall → Christmas Tree
         {"bid": 15, "name": "Main Building", "level": 20},
         {"bid": 16, "name": "Rally Point", "level": 20},
-        {"bid": 31, "name": "Wall", "level": 20},  # Use 31 for Romans, adjust for tribe
+        {"bid": 31, "name": "Wall", "level": 20},  # Use 31 for Romans
+        {"bid": 44, "name": "Christmas Tree", "level": 1},  # 50% bonus!
         
         # Military
         {"bid": 19, "name": "Barracks", "level": 20},
@@ -63,9 +64,6 @@ PRESET_ARMY = {
         # Storage
         {"bid": 10, "name": "Warehouse", "level": 20},
         {"bid": 11, "name": "Granary", "level": 20},
-        
-        # Bonus
-        {"bid": 44, "name": "Christmas Tree", "level": 1},
     ]
 }
 
@@ -75,9 +73,10 @@ PRESET_FARM = {
     "description": "Max resource production + storage. Used for collecting resources via raids.",
     "resource_target": 30,
     "buildings": [
-        # Core (minimal)
+        # PRIORITY: Main Building → Rally Point → Christmas Tree
         {"bid": 15, "name": "Main Building", "level": 20},
         {"bid": 16, "name": "Rally Point", "level": 1},
+        {"bid": 44, "name": "Christmas Tree", "level": 1},  # 50% bonus!
         {"bid": 19, "name": "Barracks", "level": 1},
         
         # Production Bonus Buildings (+25% each)
@@ -87,12 +86,9 @@ PRESET_FARM = {
         {"bid": 8, "name": "Flour Mill", "level": 5},
         {"bid": 9, "name": "Bakery", "level": 5},
         
-        # Storage - fill remaining slots (8 Warehouse + 6 Granary = 14 slots)
+        # Storage - fill remaining slots (8 Warehouse + 6 Granary)
         {"bid": 10, "name": "Warehouse", "level": 20, "count": 8},
         {"bid": 11, "name": "Granary", "level": 20, "count": 6},
-        
-        # Bonus
-        {"bid": 44, "name": "Christmas Tree", "level": 1},
     ]
 }
 
@@ -102,12 +98,13 @@ PRESET_QUICK_SETTLE = {
     "description": "Fast settling mode. Skip resource fields, use gold. Settle ASAP.",
     "resource_target": 0,  # SKIP resource fields
     "buildings": [
+        # PRIORITY: Main Building → Residence → Christmas Tree
         {"bid": 15, "name": "Main Building", "level": 20},
+        {"bid": 16, "name": "Rally Point", "level": 1},
+        {"bid": 44, "name": "Christmas Tree", "level": 1},  # 50% bonus!
         {"bid": 25, "name": "Residence", "level": 20},
         {"bid": 10, "name": "Warehouse", "level": 10},
         {"bid": 11, "name": "Granary", "level": 10},
-        {"bid": 16, "name": "Rally Point", "level": 1},
-        {"bid": 44, "name": "Christmas Tree", "level": 1},
     ]
 }
 

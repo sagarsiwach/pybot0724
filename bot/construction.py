@@ -193,6 +193,85 @@ async def find_building_position(client, server_url: str, building_name: str) ->
     return -1
 
 
+async def demolish_building(cookies, server_url: str, position_id: int, callback=None) -> bool:
+    """
+    Demolish/destroy a building at a specific position.
+    
+    This is done through the Main Building's demolish feature.
+    The building will be reduced level by level to 0.
+    
+    Args:
+        cookies: Session cookies
+        server_url: Server URL
+        position_id: Position of building to demolish (19-40)
+        callback: Progress callback
+    
+    Returns:
+        True if demolition started
+    """
+    async with httpx.AsyncClient(cookies=cookies, headers=HEADERS) as client:
+        # Find Main Building position (usually position 26, but check)
+        main_building_pos = await find_building_position(client, server_url, "Main Building")
+        
+        if main_building_pos == -1:
+            if callback:
+                callback("Main Building not found!")
+            return False
+        
+        # Go to Main Building page
+        response = await client.get(f"{server_url}/build.php?id={main_building_pos}")
+        soup = BeautifulSoup(response.text, "html.parser")
+        
+        # Look for demolish/destroy link or tab
+        # Usually it's a link like build.php?id=26&t=2 or similar
+        demolish_link = None
+        for link in soup.find_all('a'):
+            href = link.get('href', '')
+            text = link.text.lower()
+            if 'demolish' in text or 'destroy' in text or 'remove' in text or 't=2' in href:
+                demolish_link = href
+                break
+        
+        if not demolish_link:
+            if callback:
+                callback("Demolish feature not found in Main Building")
+            return False
+        
+        # Go to demolish page
+        if not demolish_link.startswith('http'):
+            demolish_link = f"{server_url}/{demolish_link}"
+        
+        response = await client.get(demolish_link)
+        soup = BeautifulSoup(response.text, "html.parser")
+        
+        # Find the building in the list and click demolish
+        # Usually a form with building position select
+        form = soup.find('form')
+        if not form:
+            if callback:
+                callback("Demolish form not found")
+            return False
+        
+        # Submit demolish for the specific position
+        # The form usually has a select for building position
+        form_data = {
+            'demolish': str(position_id),
+            's1': 'OK'
+        }
+        
+        response = await client.post(f"{server_url}/build.php?id={main_building_pos}&t=2", data=form_data)
+        
+        if response.status_code == 200:
+            if callback:
+                callback(f"Started demolishing building at position {position_id}")
+            logger.info(f"Demolishing building at position {position_id}")
+            return True
+        else:
+            if callback:
+                callback(f"Demolish failed: HTTP {response.status_code}")
+            return False
+
+
 async def upgrade_field_to_level(cookies, server_url: str, position_id: int, target_level: int) -> tuple:
     """
     Upgrade a field to a target level.
