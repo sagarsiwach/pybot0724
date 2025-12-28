@@ -279,27 +279,16 @@ class TravianCLI:
             print("  [5] Village Selection")
             print("  [6] Train Troops")
             print("  [7] Find Empty Spots & Settle")
-            print("  [l] Logs (View background task logs)")
             print("  [r] Refresh")
             print("  [q] Quit")
             
             cmd = input("\n  > ").strip().lower()
             
             if cmd == '1':
-                # Simplified production increase (background)
-                loops = input("  Loops [5]: ").strip()
-                loops = int(loops) if loops.isdigit() else 5
-                self.tm.add_task(f"Increase Production ({loops})", self.increase_production_task(loops))
-                print(f"  Started production increase ({loops} loops) in background...")
-                await asyncio.sleep(1)
+                await self.production_menu()
                 
             elif cmd == '2':
-                # Storage increase (background)
-                loops = input("  Loops [5]: ").strip()
-                loops = int(loops) if loops.isdigit() else 5
-                self.tm.add_task(f"Increase Storage ({loops})", self.increase_storage_task(loops))
-                print(f"  Started storage increase ({loops} loops) in background...")
-                await asyncio.sleep(1)
+                await self.storage_menu()
                 
             elif cmd == '3':
                 await self.resource_fields_menu()
@@ -311,8 +300,6 @@ class TravianCLI:
                 await self.troop_training_menu()
             elif cmd == '7':
                 await self.settling_menu()
-            elif cmd == 'l':  # View logs
-                await self.view_logs() 
             elif cmd == 'r':
                 await self.fetch_resources()
             elif cmd == 'q':
@@ -390,9 +377,68 @@ class TravianCLI:
             await upgrade_all_resources(self.cookies, self.server_url, target, lambda msg: self.tm.log(msg))
             self.tm.log("Finished upgrading resources")
 
-        self.tm.add_task(f"Upgrade Resources -> Lv {target}", task_wrapper())
-        print(f"\n  Task started in background! Check Dashboard.")
-        await asyncio.sleep(1.5)
+        # Run synchronously with real-time logs
+        print(f"\n  Upgrading all resources to Level {target}...")
+        print("  " + "=" * 50)
+        
+        def print_log(msg):
+            print(f"  {msg}")
+        
+        await upgrade_all_resources(self.cookies, self.server_url, target, print_log)
+        
+        print("  " + "=" * 50)
+        print("  ✓ Done!")
+        input("\n  Press Enter to continue...")
+    
+    async def production_menu(self):
+        """Production increase menu - synchronous with real-time logs."""
+        clear()
+        self.print_header()
+        print("\n  PRODUCTION INCREASE")
+        print("  " + "-" * 50)
+        
+        loops = input("  Number of loops [5]: ").strip()
+        loops = int(loops) if loops.isdigit() else 5
+        
+        print(f"\n  Running {loops} production increases...")
+        print("  " + "=" * 50)
+        
+        from bot.production import increase_production_async
+        from bot.database import init_db
+        
+        conn = init_db()
+        for i in range(loops):
+            print(f"  Loop {i+1}/{loops}...")
+            await increase_production_async(self.cookies, self.server_url, conn)
+        
+        print("  " + "=" * 50)
+        print("  ✓ Done!")
+        input("\n  Press Enter to continue...")
+    
+    async def storage_menu(self):
+        """Storage increase menu - synchronous with real-time logs."""
+        clear()
+        self.print_header()
+        print("\n  STORAGE INCREASE")
+        print("  " + "-" * 50)
+        
+        loops = input("  Number of loops [5]: ").strip()
+        loops = int(loops) if loops.isdigit() else 5
+        
+        print(f"\n  Running {loops} storage increases...")
+        print("  " + "=" * 50)
+        
+        from bot.storage import increase_storage_async
+        from bot.database import init_db
+        
+        conn = init_db()
+        for i in range(loops):
+            print(f"  Loop {i+1}/{loops}...")
+            await increase_storage_async(self.cookies, self.server_url, conn)
+        
+        print("  " + "=" * 50)
+        print("  ✓ Done!")
+        input("\n  Press Enter to continue...")
     
     async def buildings_menu(self):
         """Buildings upgrade with presets - Background Task version."""
@@ -426,14 +472,17 @@ class TravianCLI:
             target = input("  Target Level [20]: ").strip()
             target = int(target) if target.isdigit() else 20
             
-            async def standard_upgrade():
-                self.tm.log(f"Standard upgrade: upgrading all buildings to Lv {target}")
-                await upgrade_all_buildings(self.cookies, self.server_url, target, lambda msg: self.tm.log(msg))
-                self.tm.log("Standard upgrade complete!")
+            print(f"\n  Upgrading all buildings to Level {target}...")
+            print("  " + "=" * 50)
             
-            self.tm.add_task(f"Standard Upgrade → Lv {target}", standard_upgrade())
-            print(f"\n  ✓ Standard upgrade started!")
-            await asyncio.sleep(1.5)
+            def print_log(msg):
+                print(f"  {msg}")
+            
+            await upgrade_all_buildings(self.cookies, self.server_url, target, print_log)
+            
+            print("  " + "=" * 50)
+            print("  ✓ Done!")
+            input("\n  Press Enter to continue...")
             return
         
         if choice == 'd':
@@ -453,50 +502,34 @@ class TravianCLI:
             if confirm != 'y':
                 return
             
-            task_name = f"Build: {preset['name']}"
             resource_target = preset['resource_target']
             
-            async def preset_wrapper():
-                self.tm.log(f"Started: {preset['name']}")
-                
-                # Step 1: Upgrade resource fields if target > 0
-                if resource_target > 0:
-                    self.tm.log(f"Upgrading resource fields to level {resource_target}...")
-                    await upgrade_all_resources(self.cookies, self.server_url, resource_target, lambda msg: self.tm.log(msg))
-                else:
-                    self.tm.log("Skipping resource fields (Quick Settle mode)")
-                
-                # Step 2: Upgrade buildings to their target levels
-                # For now, upgrade all existing buildings to level 20 (simplified)
-                # TODO: Implement full preset-specific building construction
-                self.tm.log("Upgrading buildings...")
-                await upgrade_all_buildings(self.cookies, self.server_url, 20, lambda msg: self.tm.log(msg))
-                
-                self.tm.log(f"Finished: {preset['name']}")
+            print(f"\n  Building: {preset['name']}")
+            print("  " + "=" * 50)
             
-            target_coro = preset_wrapper()
+            def print_log(msg):
+                print(f"  {msg}")
             
-        elif choice == '5':
-            target = input("  Target Level [20]: ").strip()
-            target = int(target) if target.isdigit() else 20
-            task_name = f"Upgrade Buildings → Lv {target}"
+            # Step 1: Upgrade resource fields if target > 0
+            if resource_target > 0:
+                print_log(f"Upgrading resource fields to level {resource_target}...")
+                await upgrade_all_resources(self.cookies, self.server_url, resource_target, print_log)
+            else:
+                print_log("Skipping resource fields (Quick Settle mode)")
             
-            async def all_wrapper():
-                self.tm.log(f"Started upgrading all buildings to Lv {target}")
-                await upgrade_all_buildings(self.cookies, self.server_url, target, lambda msg: self.tm.log(msg))
-                self.tm.log("Finished upgrading buildings")
+            # Step 2: Upgrade buildings
+            print_log("Upgrading buildings...")
+            await upgrade_all_buildings(self.cookies, self.server_url, 20, print_log)
             
-            target_coro = all_wrapper()
+            print("  " + "=" * 50)
+            print(f"  ✓ Done: {preset['name']}")
+            input("\n  Press Enter to continue...")
+            return
             
         else:
             print("  Invalid choice.")
             await asyncio.sleep(1)
             return
-
-        self.tm.add_task(task_name, target_coro)
-        print(f"\n  ✓ Task started in background!")
-        print(f"    Check Dashboard or [l] Logs for progress.")
-        await asyncio.sleep(2)
     
     async def village_selection_menu(self):
         """Village selection."""
@@ -661,8 +694,19 @@ class TravianCLI:
                 await train_settlers(self.cookies, self.server_url, building_pos, count, lambda m: self.tm.log(m))
                 self.tm.log("Settlers training queued!")
             
-            self.tm.add_task(f"Train {count} Settlers", train_settlers_task())
-            print(f"\n  ✓ Training {count} settlers in background!")
+            print(f"\n  Training {count} settlers...")
+            print("  " + "=" * 50)
+            
+            from bot.troop_training import train_settlers
+            
+            def print_log(msg):
+                print(f"  {msg}")
+            
+            await train_settlers(self.cookies, self.server_url, building_pos, count, print_log)
+            
+            print("  " + "=" * 50)
+            print("  ✓ Settlers training queued!")
+            input("\n  Press Enter to continue...")
         else:
             # Regular troops
             troop_idx = input("  Troop type (1-6) [1]: ").strip()
@@ -671,16 +715,19 @@ class TravianCLI:
             loops = input("  Training loops [10]: ").strip()
             loops = int(loops) if loops.isdigit() else 10
             
-            async def train_troops_task():
-                from bot.troop_training import train_max_troops
-                self.tm.log(f"Training troops (type {troop_idx}) at position {building_pos}...")
-                await train_max_troops(self.cookies, self.server_url, building_pos, troop_idx, loops, lambda m: self.tm.log(m))
-                self.tm.log("Troop training complete!")
+            print(f"\n  Training troops ({loops} loops)...")
+            print("  " + "=" * 50)
             
-            self.tm.add_task(f"Train Troops ({loops} loops)", train_troops_task())
-            print(f"\n  ✓ Training troops in background!")
-        
-        await asyncio.sleep(1.5)
+            from bot.troop_training import train_max_troops
+            
+            def print_log(msg):
+                print(f"  {msg}")
+            
+            await train_max_troops(self.cookies, self.server_url, building_pos, troop_idx, loops, print_log)
+            
+            print("  " + "=" * 50)
+            print("  ✓ Troop training complete!")
+            input("\n  Press Enter to continue...")
 
     async def settling_menu(self):
         """Find empty spots and settle menu."""
@@ -702,38 +749,45 @@ class TravianCLI:
         if choice == '1':
             # Find empty spots
             print("\n  Scanning for empty spots...")
+            print("  " + "=" * 50)
             
-            async def find_spots_task():
-                from bot.settling import find_empty_spots, get_coordinates_from_id
-                self.tm.log("Scanning for empty spots...")
-                spots = await find_empty_spots(self.cookies, self.server_url, max_spots=10, max_radius=20, callback=lambda m: self.tm.log(m))
-                if spots:
-                    for spot in spots:
-                        coords = await get_coordinates_from_id(spot)
-                        self.tm.log(f"Empty: ({coords[0]}|{coords[1]}) - ID {spot}")
-                    self.tm.log(f"Found {len(spots)} empty spots!")
-                else:
-                    self.tm.log("No empty spots found nearby.")
+            from bot.settling import find_empty_spots, get_coordinates_from_id
             
-            self.tm.add_task("Find Empty Spots", find_spots_task())
-            print("  ✓ Scanning in background! Check logs.")
+            def print_log(msg):
+                print(f"  {msg}")
+            
+            spots = await find_empty_spots(self.cookies, self.server_url, max_spots=10, max_radius=20, callback=print_log)
+            
+            if spots:
+                print()
+                for spot in spots:
+                    coords = await get_coordinates_from_id(spot)
+                    print(f"  Empty: ({coords[0]}|{coords[1]}) - ID {spot}")
+                print(f"\n  Found {len(spots)} empty spots!")
+            else:
+                print("  No empty spots found nearby.")
+            
+            print("  " + "=" * 50)
+            input("\n  Press Enter to continue...")
             
         elif choice == '2':
-            # Auto settle
-            print("\n  Starting auto-settle...")
-            print("  Make sure you have 3 settlers trained!")
+            # Smart settle
+            print("\n  Starting Smart Settle...")
+            print("  " + "=" * 50)
             
-            async def auto_settle_task():
-                from bot.settling import auto_settle
-                self.tm.log("Starting auto-settle...")
-                success = await auto_settle(self.cookies, self.server_url, callback=lambda m: self.tm.log(m))
-                if success:
-                    self.tm.log("✓ Village settled successfully!")
-                else:
-                    self.tm.log("Settling failed - check if you have 3 settlers")
+            from bot.settling import smart_settle
             
-            self.tm.add_task("Auto Settle", auto_settle_task())
-            print("  ✓ Auto-settle started in background!")
+            def print_log(msg):
+                print(f"  {msg}")
+            
+            success = await smart_settle(self.cookies, self.server_url, callback=print_log)
+            
+            print("  " + "=" * 50)
+            if success:
+                print("  ✓ Village settled successfully!")
+            else:
+                print("  ✗ Settling not complete - see messages above")
+            input("\n  Press Enter to continue...")
             
         elif choice == '3':
             # Settle at coordinates
@@ -746,23 +800,26 @@ class TravianCLI:
                 target_id = (200 + y) * 401 + (200 + x) + 1
                 
                 print(f"\n  Target: ({x}|{y}) - ID {target_id}")
+                print("  " + "=" * 50)
                 
-                async def settle_task():
-                    from bot.settling import settle_village
-                    self.tm.log(f"Attempting to settle at ({x}|{y})...")
-                    success = await settle_village(self.cookies, self.server_url, target_id, callback=lambda m: self.tm.log(m))
-                    if success:
-                        self.tm.log(f"✓ Settled at ({x}|{y})!")
-                    else:
-                        self.tm.log(f"Failed to settle at ({x}|{y})")
+                from bot.settling import settle_village
                 
-                self.tm.add_task(f"Settle ({x}|{y})", settle_task())
-                print("  ✓ Settling in background!")
+                def print_log(msg):
+                    print(f"  {msg}")
+                
+                success = await settle_village(self.cookies, self.server_url, target_id, callback=print_log)
+                
+                print("  " + "=" * 50)
+                if success:
+                    print(f"  ✓ Settled at ({x}|{y})!")
+                else:
+                    print(f"  ✗ Failed to settle at ({x}|{y})")
+                input("\n  Press Enter to continue...")
                 
             except ValueError:
                 print("  Invalid coordinates!")
-        
-        await asyncio.sleep(1.5)
+                await asyncio.sleep(1)
+
 
     async def increase_production_task(self, loops):
         """Wrapper task for production."""
