@@ -66,6 +66,133 @@ async def upgrade_field(client, server_url: str, position_id: int) -> bool:
     return upgrade_response.status_code == 200
 
 
+async def construct_building(client, server_url: str, position_id: int, building_id: int) -> bool:
+    """
+    Construct a NEW building at an empty slot.
+    
+    Args:
+        client: httpx client with cookies
+        server_url: Server URL (e.g., https://netus.gotravspeed.com)
+        position_id: Building slot position (19-40)
+        building_id: Building type ID (e.g., 19 for Barracks, 10 for Warehouse)
+    
+    Returns:
+        True if construction started successfully
+    """
+    # First, check if the slot is empty (shows construction page)
+    response = await client.get(f"{server_url}/build.php?id={position_id}")
+    
+    if 'construction of a new building' not in response.text.lower():
+        logger.warning(f"Position {position_id} is not empty - cannot construct new building")
+        return False
+    
+    soup = BeautifulSoup(response.text, "html.parser")
+    
+    # Find the build link for the specific building ID
+    # Format: village2.php?id=X&b=Y&k=CSRF
+    build_links = soup.find_all('a', class_='build', href=lambda x: x and f'&b={building_id}&' in str(x) or x.endswith(f'&b={building_id}'))
+    
+    if not build_links:
+        # Try different pattern: href containing b=ID anywhere
+        for link in soup.find_all('a', class_='build'):
+            href = link.get('href', '')
+            if f'&b={building_id}' in href:
+                build_links = [link]
+                break
+    
+    if not build_links:
+        logger.warning(f"Building ID {building_id} not available at position {position_id}")
+        return False
+    
+    # Click the build link
+    href = build_links[0].get('href', '')
+    response = await client.get(f"{server_url}/{href}")
+    
+    if response.status_code == 200:
+        logger.info(f"Started construction of building ID {building_id} at position {position_id}")
+        return True
+    else:
+        logger.error(f"Failed to construct building: HTTP {response.status_code}")
+        return False
+
+
+async def find_empty_slot(client, server_url: str) -> int:
+    """Find an empty building slot (19-40). Returns position or -1 if none found."""
+    for pos in range(19, 41):
+        response = await client.get(f"{server_url}/build.php?id={pos}")
+        if 'construction of a new building' in response.text.lower():
+            return pos
+    return -1
+
+
+async def apply_preset(cookies, server_url: str, preset: dict, callback=None):
+    """
+    Apply a building preset to the current village.
+    
+    This will:
+    1. For each building in preset, find an empty slot and construct it
+    2. Upgrade all buildings to their target levels
+    """
+    async with httpx.AsyncClient(cookies=cookies, headers=HEADERS) as client:
+        buildings_to_build = preset.get('buildings', [])
+        
+        for building in buildings_to_build:
+            bid = building['bid']
+            name = building['name']
+            target_level = building.get('level', 1)
+            count = building.get('count', 1)  # For multiple warehouses/granaries
+            
+            for i in range(count):
+                # Check if this building type already exists
+                existing_pos = await find_building_position(client, server_url, name)
+                
+                if existing_pos == -1:
+                    # Need to construct new
+                    empty_slot = await find_empty_slot(client, server_url)
+                    if empty_slot == -1:
+                        if callback:
+                            callback(f"No empty slots! Cannot build {name}")
+                        continue
+                    
+                    if callback:
+                        callback(f"Constructing {name} at slot {empty_slot}...")
+                    
+                    success = await construct_building(client, server_url, empty_slot, bid)
+                    if success:
+                        existing_pos = empty_slot
+                    else:
+                        if callback:
+                            callback(f"Failed to construct {name}")
+                        continue
+                
+                # Now upgrade to target level
+                if existing_pos > 0 and target_level > 1:
+                    if callback:
+                        callback(f"Upgrading {name} to level {target_level}...")
+                    
+                    for _ in range(target_level - 1):
+                        info = await get_field_info(client, server_url, existing_pos)
+                        if info['level'] >= target_level:
+                            break
+                        if info['upgrade_url']:
+                            await client.get(f"{server_url}/{info['upgrade_url']}")
+                            if callback:
+                                callback(f"{name} → Level {info['level'] + 1}")
+
+
+async def find_building_position(client, server_url: str, building_name: str) -> int:
+    """Find position of an existing building by name. Returns -1 if not found."""
+    for pos in range(19, 41):
+        response = await client.get(f"{server_url}/build.php?id={pos}")
+        soup = BeautifulSoup(response.text, "html.parser")
+        h1 = soup.find('h1')
+        if h1:
+            text = h1.text.lower()
+            if building_name.lower() in text and 'construction' not in text:
+                return pos
+    return -1
+
+
 async def upgrade_field_to_level(cookies, server_url: str, position_id: int, target_level: int) -> tuple:
     """
     Upgrade a field to a target level.
