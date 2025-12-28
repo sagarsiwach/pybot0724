@@ -357,8 +357,15 @@ async def upgrade_all_buildings(cookies, server_url: str, target_level: int = 20
         for pos in range(19, 41):
             info = await get_field_info(client, server_url, pos)
             
-            # Skip empty slots
-            if 'empty' in info['name'].lower() or info['name'] == f"Position {pos}":
+            # Skip empty slots - check for construction page indicators
+            name_lower = info['name'].lower()
+            if ('empty' in name_lower or 
+                'construction' in name_lower or 
+                'new building' in name_lower or
+                info['name'] == f"Position {pos}" or
+                info['level'] == 0):
+                if callback:
+                    callback(f"[{pos}] Empty slot - skipping")
                 results.append((pos, "Empty", 0, 0, "Skipped"))
                 continue
             
