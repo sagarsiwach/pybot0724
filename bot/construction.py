@@ -268,7 +268,10 @@ async def apply_preset(cookies, server_url: str, preset: dict, callback=None):
                     if callback:
                         callback(f"  Upgrading from {current} to {target_level}...")
                     
+                    upgrades_done = 0
                     while current < target_level:
+                        await asyncio.sleep(0.3)  # Delay between upgrades
+                        
                         info = await get_field_info(client, server_url, existing_pos)
                         current = info['level']
                         
@@ -276,18 +279,31 @@ async def apply_preset(cookies, server_url: str, preset: dict, callback=None):
                             break
                         
                         if info['upgrade_url']:
-                            await client.get(f"{server_url}/{info['upgrade_url']}")
-                            current += 1
-                            if callback:
-                                callback(f"    → Level {current}")
+                            response = await client.get(f"{server_url}/{info['upgrade_url']}")
+                            if response.status_code == 200:
+                                upgrades_done += 1
+                                current += 1
+                                if callback:
+                                    callback(f"    → Level {current}")
+                            else:
+                                if callback:
+                                    callback(f"  ✗ Upgrade failed (HTTP {response.status_code})")
+                                break
                         else:
                             if callback:
-                                callback(f"  ✗ Cannot upgrade further")
+                                callback(f"  ⚠ Waiting for resources/queue (at Lv {current})")
                             break
                     
-                    position_data[existing_pos]['level'] = current
+                    # Re-fetch actual level
+                    info = await get_field_info(client, server_url, existing_pos)
+                    final_level = info['level']
+                    position_data[existing_pos]['level'] = final_level
+                    
                     if callback:
-                        callback(f"  ✓ {name} at level {current}")
+                        if final_level >= target_level:
+                            callback(f"  ✓ {name} at level {final_level}")
+                        else:
+                            callback(f"  ⚠ {name} at level {final_level}/{target_level}")
 
 
 async def find_building_position(client, server_url: str, building_name: str) -> int:
