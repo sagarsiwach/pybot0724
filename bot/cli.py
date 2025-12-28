@@ -277,6 +277,8 @@ class TravianCLI:
             print("  [3] Resource Fields (View/Upgrade)")
             print("  [4] Buildings (View/Upgrade)")
             print("  [5] Village Selection")
+            print("  [6] Train Troops")
+            print("  [7] Find Empty Spots & Settle")
             print("  [l] Logs (View background task logs)")
             print("  [r] Refresh")
             print("  [q] Quit")
@@ -305,11 +307,17 @@ class TravianCLI:
                 await self.buildings_menu()
             elif cmd == '5':
                 await self.village_selection_menu()
+            elif cmd == '6':
+                await self.troop_training_menu()
+            elif cmd == '7':
+                await self.settling_menu()
             elif cmd == 'l':  # View logs
                 await self.view_logs() 
             elif cmd == 'r':
                 await self.fetch_resources()
-        print("\n  PRODUCTION INCREASE")
+            elif cmd == 'q':
+                print("  Goodbye!")
+                return
         print("  " + "-" * 40)
         
         loops = input("  Number of loops [10]: ").strip()
@@ -545,6 +553,147 @@ class TravianCLI:
         await upgrade_smithy(self.session_manager)
         
         input("\n  Press Enter to continue...")
+
+    async def troop_training_menu(self):
+        """Troop training menu."""
+        clear()
+        self.print_header()
+        print("\n  TROOP TRAINING")
+        print("  " + "-" * 50)
+        
+        print("\n  Select building:")
+        print("  [1] Barracks (Infantry)")
+        print("  [2] Stable (Cavalry)")
+        print("  [3] Siege Workshop")
+        print("  [4] Residence (Train Settlers)")
+        print("  [b] Back")
+        
+        choice = input("\n  > ").strip().lower()
+        if choice == 'b':
+            return
+        
+        building_positions = {'1': 19, '2': 20, '3': 21, '4': 25}
+        
+        if choice not in building_positions:
+            print("  Invalid choice.")
+            await asyncio.sleep(1)
+            return
+        
+        building_pos = building_positions[choice]
+        
+        # For settlers
+        if choice == '4':
+            count = input("  How many settlers? [3]: ").strip()
+            count = int(count) if count.isdigit() else 3
+            
+            async def train_settlers_task():
+                from bot.troop_training import train_settlers
+                self.tm.log(f"Training {count} settlers...")
+                await train_settlers(self.cookies, self.server_url, building_pos, count, lambda m: self.tm.log(m))
+                self.tm.log("Settlers training queued!")
+            
+            self.tm.add_task(f"Train {count} Settlers", train_settlers_task())
+            print(f"\n  ✓ Training {count} settlers in background!")
+        else:
+            # Regular troops
+            troop_idx = input("  Troop type (1-6) [1]: ").strip()
+            troop_idx = int(troop_idx) if troop_idx.isdigit() else 1
+            
+            loops = input("  Training loops [10]: ").strip()
+            loops = int(loops) if loops.isdigit() else 10
+            
+            async def train_troops_task():
+                from bot.troop_training import train_max_troops
+                self.tm.log(f"Training troops (type {troop_idx}) at position {building_pos}...")
+                await train_max_troops(self.cookies, self.server_url, building_pos, troop_idx, loops, lambda m: self.tm.log(m))
+                self.tm.log("Troop training complete!")
+            
+            self.tm.add_task(f"Train Troops ({loops} loops)", train_troops_task())
+            print(f"\n  ✓ Training troops in background!")
+        
+        await asyncio.sleep(1.5)
+
+    async def settling_menu(self):
+        """Find empty spots and settle menu."""
+        clear()
+        self.print_header()
+        print("\n  VILLAGE SETTLING")
+        print("  " + "-" * 50)
+        
+        print("\n  Options:")
+        print("  [1] Find Empty Spots (scan nearby)")
+        print("  [2] Auto Settle (find + settle)")
+        print("  [3] Settle at specific coordinates")
+        print("  [b] Back")
+        
+        choice = input("\n  > ").strip().lower()
+        if choice == 'b':
+            return
+        
+        if choice == '1':
+            # Find empty spots
+            print("\n  Scanning for empty spots...")
+            
+            async def find_spots_task():
+                from bot.settling import find_empty_spots, get_coordinates_from_id
+                self.tm.log("Scanning for empty spots...")
+                spots = await find_empty_spots(self.cookies, self.server_url, max_spots=10, max_radius=20, callback=lambda m: self.tm.log(m))
+                if spots:
+                    for spot in spots:
+                        coords = await get_coordinates_from_id(spot)
+                        self.tm.log(f"Empty: ({coords[0]}|{coords[1]}) - ID {spot}")
+                    self.tm.log(f"Found {len(spots)} empty spots!")
+                else:
+                    self.tm.log("No empty spots found nearby.")
+            
+            self.tm.add_task("Find Empty Spots", find_spots_task())
+            print("  ✓ Scanning in background! Check logs.")
+            
+        elif choice == '2':
+            # Auto settle
+            print("\n  Starting auto-settle...")
+            print("  Make sure you have 3 settlers trained!")
+            
+            async def auto_settle_task():
+                from bot.settling import auto_settle
+                self.tm.log("Starting auto-settle...")
+                success = await auto_settle(self.cookies, self.server_url, callback=lambda m: self.tm.log(m))
+                if success:
+                    self.tm.log("✓ Village settled successfully!")
+                else:
+                    self.tm.log("Settling failed - check if you have 3 settlers")
+            
+            self.tm.add_task("Auto Settle", auto_settle_task())
+            print("  ✓ Auto-settle started in background!")
+            
+        elif choice == '3':
+            # Settle at coordinates
+            x = input("  Enter X coordinate: ").strip()
+            y = input("  Enter Y coordinate: ").strip()
+            
+            try:
+                x, y = int(x), int(y)
+                # Convert to village ID: id = (200 + y) * 401 + (200 + x) + 1
+                target_id = (200 + y) * 401 + (200 + x) + 1
+                
+                print(f"\n  Target: ({x}|{y}) - ID {target_id}")
+                
+                async def settle_task():
+                    from bot.settling import settle_village
+                    self.tm.log(f"Attempting to settle at ({x}|{y})...")
+                    success = await settle_village(self.cookies, self.server_url, target_id, callback=lambda m: self.tm.log(m))
+                    if success:
+                        self.tm.log(f"✓ Settled at ({x}|{y})!")
+                    else:
+                        self.tm.log(f"Failed to settle at ({x}|{y})")
+                
+                self.tm.add_task(f"Settle ({x}|{y})", settle_task())
+                print("  ✓ Settling in background!")
+                
+            except ValueError:
+                print("  Invalid coordinates!")
+        
+        await asyncio.sleep(1.5)
 
     async def increase_production_task(self, loops):
         """Wrapper task for production."""
