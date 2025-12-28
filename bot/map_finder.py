@@ -2,7 +2,7 @@
 
 import httpx
 import logging
-from database import save_empty_spot, delete_all_empty_spots
+from .database import save_empty_spot, delete_all_empty_spots
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)

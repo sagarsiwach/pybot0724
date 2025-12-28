@@ -1,0 +1,30 @@
+[project]
+name = "travian-bot"
+version = "0.1.0"
+description = "Automation bot for Travian Speed Server"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.27.0",
+    "beautifulsoup4>=4.12.0",
+    "tabulate>=0.9.0",
+    "requests-toolbelt>=1.0.0",
+    "playwright>=1.57.0",
+    "textual>=6.11.0",
+    "rich>=14.2.0",
+]
+
+[project.scripts]
+travian-bot = "bot.bot:main"
+travian-tui = "bot.tui:main"
+travian-cli = "bot.cli:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["bot"]
+
+[dependency-groups]
+dev = []

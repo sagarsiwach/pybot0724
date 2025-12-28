@@ -2,16 +2,17 @@
 
 import asyncio
 import logging
-from session_manager import SessionManager
-from village import fetch_villages, rename_village
-from construction import construct_capital, construct_village, research_academy, upgrade_smithy, upgrade_armory
-from storage import increase_storage_async
-from production import increase_production_async
-from database import init_db, get_all_users, delete_all_users, get_all_empty_spots
-from map_finder import generate_spiral_village_ids, find_empty_village_spots
-from fetch_all_villages import fetch_and_store_all_villages
-from attack_village import select_and_attack_village
-from troop_training import train_troops
+from .session_manager import SessionManager
+from .village import fetch_villages, rename_village
+from .construction import construct_capital, construct_village, research_academy, upgrade_smithy, upgrade_armory
+from .storage import increase_storage_async
+from .production import increase_production_async
+from .database import init_db, get_all_users, delete_all_users, get_all_empty_spots
+from .map_finder import generate_spiral_village_ids, find_empty_village_spots
+from .fetch_all_villages import fetch_and_store_all_villages
+from .attack_village import select_and_attack_village
+from .troop_training import train_troops
+from .tasks import loop_task_until_escape
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -239,7 +240,12 @@ async def login_menu():
         else:
             print("Invalid choice. Please try again.")
 
-if __name__ == "__main__":
+def main():
+    """Entry point for the bot."""
     print("Welcome to Bot for Fun Server")
     session_manager = asyncio.run(login_menu())
     asyncio.run(main_menu(session_manager))
+
+
+if __name__ == "__main__":
+    main()

@@ -1,6 +1,6 @@
 import httpx
 from bs4 import BeautifulSoup
-from database import save_user
+from .database import save_user
 
 INITIAL_BASE_URL = "https://gotravspeed.com"
 POST_LOGIN_BASE_URL = "https://fun.gotravspeed.com"

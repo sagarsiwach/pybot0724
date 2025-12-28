@@ -1,6 +1,5 @@
 import httpx
 import logging
-from session_manager import SessionManager
 
 BASE_URL = "https://fun.gotravspeed.com"
 

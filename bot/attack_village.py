@@ -4,6 +4,7 @@ import httpx
 from bs4 import BeautifulSoup
 import asyncio
 from tabulate import tabulate
+from .village import fetch_villages
 
 BASE_URL = "https://fun.gotravspeed.com"
 

@@ -2,8 +2,8 @@
 import httpx
 import logging
 from bs4 import BeautifulSoup
-from database import get_buildings
-from utils import switch_village
+from .database import get_buildings
+from .utils import switch_village
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)

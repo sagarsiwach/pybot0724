@@ -4,7 +4,7 @@ import httpx
 from bs4 import BeautifulSoup
 import logging
 import asyncio
-from database import save_village
+from .database import save_village
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -59,13 +59,14 @@ async def fetch_and_store_all_villages(session_manager, conn):
         await fetch_villages_for_player(cookies, player_id, player_name, conn)
 
 if __name__ == "__main__":
-    from session_manager import SessionManager
-    from database import init_db
+    from .session_manager import SessionManager
+    from .database import init_db
 
     async def main():
         conn = init_db()
-        session_manager = SessionManager('your_username', 'your_password', conn)
+        session_manager = SessionManager('your_username', 'your_password', 'roman', conn)
         await session_manager.login()
         await fetch_and_store_all_villages(session_manager, conn)
 
     asyncio.run(main())
+
