@@ -44,24 +44,78 @@ def format_number(num_str: str) -> str:
         return num_str
 
 
+class TaskManager:
+    """Manages background tasks and their logs."""
+    def __init__(self):
+        self.tasks = []  # List of (name, task_object, start_time)
+        self.logs = []   # Global log buffer
+    
+    def add_task(self, name, coro):
+        """Start a coroutine as a background task."""
+        task = asyncio.create_task(coro)
+        self.tasks.append({
+            'name': name,
+            'task': task,
+            'start_time': datetime.now(),
+            'status': 'Running'
+        })
+        task.add_done_callback(lambda t: self._task_done(t, name))
+        return task
+    
+    def _task_done(self, task, name):
+        """Callback when task finishes."""
+        for t in self.tasks:
+            if t['name'] == name:
+                t['status'] = 'Done' if not task.cancelled() else 'Cancelled'
+                # Log any exceptions
+                try:
+                    exc = task.exception()
+                    if exc:
+                        t['status'] = f'Error: {exc}'
+                except:
+                    pass
+    
+    def get_active_tasks(self):
+        """Return list of running tasks."""
+        # Cleanup old finished tasks (optional policy: keep them for history)
+        return [t for t in self.tasks if t['status'] == 'Running']
+    
+    def log(self, msg):
+        """Add to global log."""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.logs.append(f"[{timestamp}] {msg}")
+        # Keep only last 50 logs
+        if len(self.logs) > 50:
+            self.logs.pop(0)
+
+
 class TravianCLI:
     def __init__(self):
         self.session_manager = None
         self.cookies = None
         self.conn = None
         self.username = None
+        self.server_id = 9
+        self.server_name = "Fun"
+        self.server_url = "https://fun.gotravspeed.com"
         self.villages = []
         self.current_village = None
         self.resources = {}
+        self.tm = TaskManager()  # New TaskManager
         
-    async def login(self, username: str, password: str):
+    async def login(self, username: str, password: str, server_id: int = 9):
         """Login to the game."""
         from bot.database import init_db
-        from bot.session_manager import SessionManager
+        from bot.session_manager import SessionManager, SERVERS
         
         self.conn = init_db()
         self.username = username
-        self.session_manager = SessionManager(username, password, "roman", self.conn)
+        self.server_id = server_id
+        server_info = SERVERS.get(server_id, SERVERS[9])
+        self.server_name = server_info['name']
+        self.server_url = server_info['url']
+        
+        self.session_manager = SessionManager(username, password, "roman", self.conn, server_id)
         self.cookies = await self.session_manager.login()
         
         if self.cookies:
@@ -74,27 +128,57 @@ class TravianCLI:
     
     async def fetch_villages(self):
         """Fetch all villages."""
-        async with httpx.AsyncClient(cookies=self.cookies) as client:
-            response = await client.get(f"{BASE_URL}/profile.php")
+        from bot.session_manager import HEADERS
+        
+        async with httpx.AsyncClient(cookies=self.cookies, headers=HEADERS) as client:
+            response = await client.get(f"{self.server_url}/profile.php")
             soup = BeautifulSoup(response.text, 'html.parser')
             
             self.villages = []
             village_table = soup.find('table', {'id': 'villages'})
+            
             if village_table:
-                rows = village_table.find('tbody').find_all('tr')
-                for row in rows:
-                    cols = row.find_all('td')
-                    name = cols[0].text.strip()
-                    link = row.find('a')
-                    vid = link['href'].split('=')[-1] if link else '0'
-                    coords = cols[4].text.strip()[1:-1].split('|')
-                    x, y = int(coords[0]), int(coords[1])
-                    self.villages.append({'name': name, 'id': vid, 'x': x, 'y': y})
+                tbody = village_table.find('tbody')
+                if tbody:
+                    rows = tbody.find_all('tr')
+                    for row in rows:
+                        cols = row.find_all('td')
+                        # Handle different table formats
+                        if len(cols) >= 5:
+                            # Full format with coordinates
+                            name = cols[0].text.strip()
+                            link = row.find('a')
+                            vid = link['href'].split('=')[-1] if link else '0'
+                            try:
+                                coords = cols[4].text.strip()[1:-1].split('|')
+                                x, y = int(coords[0]), int(coords[1])
+                            except:
+                                x, y = 0, 0
+                            self.villages.append({'name': name, 'id': vid, 'x': x, 'y': y})
+                        elif len(cols) >= 1:
+                            # Simple format (single village, beginner protection)
+                            # Get village from sidebar instead
+                            pass
+            
+            # If no villages found from table, try sidebar
+            if not self.villages:
+                # Get current village from village1.php
+                response = await client.get(f"{self.server_url}/village1.php")
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # Try to find village name from title or sidebar
+                title = soup.find('title')
+                village_name = title.text.split(' - ')[0] if title else 'Village'
+                
+                # Add default village
+                self.villages.append({'name': village_name, 'id': '0', 'x': 0, 'y': 0})
     
     async def fetch_resources(self):
         """Fetch current resources."""
-        async with httpx.AsyncClient(cookies=self.cookies) as client:
-            response = await client.get(f"{BASE_URL}/village1.php")
+        from bot.session_manager import HEADERS
+        
+        async with httpx.AsyncClient(cookies=self.cookies, headers=HEADERS) as client:
+            response = await client.get(f"{self.server_url}/village1.php")
             soup = BeautifulSoup(response.text, 'html.parser')
             
             res_div = soup.find('div', id='res')
@@ -110,9 +194,10 @@ class TravianCLI:
     
     async def fetch_resource_fields(self):
         """Fetch resource fields (positions 1-18) with levels."""
+        from bot.session_manager import HEADERS
         fields = []
-        async with httpx.AsyncClient(cookies=self.cookies) as client:
-            response = await client.get(f"{BASE_URL}/village1.php")
+        async with httpx.AsyncClient(cookies=self.cookies, headers=HEADERS) as client:
+            response = await client.get(f"{self.server_url}/village1.php")
             soup = BeautifulSoup(response.text, 'html.parser')
             
             # Parse resource field map
@@ -135,9 +220,10 @@ class TravianCLI:
     
     async def fetch_buildings(self):
         """Fetch buildings (positions 19-40) with levels."""
+        from bot.session_manager import HEADERS
         buildings = []
-        async with httpx.AsyncClient(cookies=self.cookies) as client:
-            response = await client.get(f"{BASE_URL}/village2.php")
+        async with httpx.AsyncClient(cookies=self.cookies, headers=HEADERS) as client:
+            response = await client.get(f"{self.server_url}/village2.php")
             soup = BeautifulSoup(response.text, 'html.parser')
             
             # Parse building map
@@ -159,8 +245,9 @@ class TravianCLI:
     
     async def switch_village(self, village_id: str):
         """Switch to a different village."""
-        async with httpx.AsyncClient(cookies=self.cookies) as client:
-            await client.get(f"{BASE_URL}/village1.php?newdid={village_id}")
+        from bot.session_manager import HEADERS
+        async with httpx.AsyncClient(cookies=self.cookies, headers=HEADERS) as client:
+            await client.get(f"{self.server_url}/village1.php?newdid={village_id}")
         # Update current village
         for v in self.villages:
             if v['id'] == village_id:
@@ -178,75 +265,50 @@ class TravianCLI:
         from bot.construction import construct_and_upgrade_building
         await construct_and_upgrade_building(self.cookies, position, building_id, loops)
     
-    def print_header(self):
-        """Print minimal header."""
-        print("=" * 60)
-        print(f"  TRAVIAN BOT | {self.username or 'Not logged in'}")
-        if self.current_village:
-            print(f"  Village: {self.current_village['name']} ({self.current_village['x']}|{self.current_village['y']})")
-        print("=" * 60)
-    
-    def print_resources(self):
-        """Print resource bar."""
-        if self.resources:
-            print(f"\n  Wood: {format_number(self.resources.get('wood', '0')):>10} | "
-                  f"Clay: {format_number(self.resources.get('clay', '0')):>10} | "
-                  f"Iron: {format_number(self.resources.get('iron', '0')):>10} | "
-                  f"Crop: {format_number(self.resources.get('crop', '0')):>10}")
-            print(f"  Warehouse: {format_number(self.resources.get('warehouse', '0')):>10} | "
-                  f"Granary: {format_number(self.resources.get('granary', '0')):>10}")
-        print()
-    
     async def main_menu(self):
-        """Main menu loop."""
+        """Main interaction loop."""
         while True:
             clear()
-            self.print_header()
-            self.print_resources()
+            self.print_dashboard()  # Use new dashboard view
             
-            print("  [1] Production")
-            print("  [2] Storage")
-            print("  [3] Resource Fields")
-            print("  [4] Buildings")
+            print("\n  COMMANDS")
+            print("  [1] Production (Upgrade fields)")
+            print("  [2] Storage/Granary")
+            print("  [3] Resource Fields (View/Upgrade)")
+            print("  [4] Buildings (View/Upgrade)")
             print("  [5] Village Selection")
-            print("  [6] View Village Details")
-            print("  [7] Research Academy")
-            print("  [8] Upgrade Armory")
-            print("  [9] Upgrade Smithy")
+            print("  [l] Logs (View background task logs)")
             print("  [r] Refresh")
             print("  [q] Quit")
-            print()
             
-            choice = input("  > ").strip().lower()
+            cmd = input("\n  > ").strip().lower()
             
-            if choice == '1':
-                await self.production_menu()
-            elif choice == '2':
-                await self.storage_menu()
-            elif choice == '3':
+            if cmd == '1':
+                # Simplified production increase (background)
+                loops = input("  Loops [5]: ").strip()
+                loops = int(loops) if loops.isdigit() else 5
+                self.tm.add_task(f"Increase Production ({loops})", self.increase_production_task(loops))
+                print(f"  Started production increase ({loops} loops) in background...")
+                await asyncio.sleep(1)
+                
+            elif cmd == '2':
+                # Storage increase (background)
+                loops = input("  Loops [5]: ").strip()
+                loops = int(loops) if loops.isdigit() else 5
+                self.tm.add_task(f"Increase Storage ({loops})", self.increase_storage_task(loops))
+                print(f"  Started storage increase ({loops} loops) in background...")
+                await asyncio.sleep(1)
+                
+            elif cmd == '3':
                 await self.resource_fields_menu()
-            elif choice == '4':
+            elif cmd == '4':
                 await self.buildings_menu()
-            elif choice == '5':
+            elif cmd == '5':
                 await self.village_selection_menu()
-            elif choice == '6':
-                await self.village_details_menu()
-            elif choice == '7':
-                await self.research_academy()
-            elif choice == '8':
-                await self.upgrade_armory()
-            elif choice == '9':
-                await self.upgrade_smithy()
-            elif choice == 'r':
+            elif cmd == 'l':  # View logs
+                await self.view_logs() 
+            elif cmd == 'r':
                 await self.fetch_resources()
-            elif choice == 'q':
-                print("\n  Goodbye!")
-                break
-    
-    async def production_menu(self):
-        """Production increase menu."""
-        clear()
-        self.print_header()
         print("\n  PRODUCTION INCREASE")
         print("  " + "-" * 40)
         
@@ -286,63 +348,126 @@ class TravianCLI:
         input("\n  Press Enter to continue...")
     
     async def resource_fields_menu(self):
-        """Resource fields view and upgrade."""
-        while True:
-            clear()
-            self.print_header()
-            print("\n  RESOURCE FIELDS")
-            print("  " + "-" * 50)
-            
-            fields = await self.fetch_resource_fields()
-            
+        """Resource fields upgrade - Background Task version."""
+        clear()
+        self.print_header()
+        print("\n  RESOURCE FIELDS UPGRADE")
+        print("  " + "-" * 50)
+        
+        # Show current levels
+        # (This blocks briefly to fetch data, which is fine for UI responsiveness)
+        print("\n  Fetching current levels...")
+        from bot.construction import get_field_info, upgrade_all_resources, HEADERS
+        
+        async with httpx.AsyncClient(cookies=self.cookies, headers=HEADERS) as client:
             print(f"\n  {'Pos':<5} {'Type':<20} {'Level':<10}")
             print("  " + "-" * 40)
-            for f in fields:
-                print(f"  {f['pos']:<5} {f['name']:<20} {f['level']:<10}")
+            for pos in range(1, 19):
+                info = await get_field_info(client, self.server_url, pos)
+                print(f"  {pos:<5} {info['name']:<20} {info['level']:<10}")
+        
+        print("\n  [Enter] Upgrade ALL to Level 30")
+        print("  [b] Back")
+        
+        target = input("\n  Target Level [30]: ").strip()
+        if target.lower() == 'b':
+            return
             
-            print("\n  Enter position to upgrade, or [b] to go back")
-            choice = input("  > ").strip().lower()
-            
-            if choice == 'b':
-                break
-            elif choice.isdigit():
-                pos = int(choice)
-                loops = input(f"  Upgrade loops for position {pos} [1]: ").strip()
-                loops = int(loops) if loops.isdigit() else 1
-                print(f"\n  Upgrading position {pos} ({loops} times)...")
-                await self.upgrade_resource(pos, loops)
-                print("  Done!")
-                await asyncio.sleep(1)
+        target = int(target) if target.isdigit() else 30
+        
+        # Define the background task
+        async def task_wrapper():
+            self.tm.log(f"Started upgrading all resources to Lv {target}")
+            # We pass a callback to log progress to TaskManager
+            await upgrade_all_resources(self.cookies, self.server_url, target, lambda msg: self.tm.log(msg))
+            self.tm.log("Finished upgrading resources")
+
+        self.tm.add_task(f"Upgrade Resources -> Lv {target}", task_wrapper())
+        print(f"\n  Task started in background! Check Dashboard.")
+        await asyncio.sleep(1.5)
     
     async def buildings_menu(self):
-        """Buildings view and upgrade."""
-        while True:
-            clear()
-            self.print_header()
-            print("\n  BUILDINGS")
-            print("  " + "-" * 50)
+        """Buildings upgrade with presets - Background Task version."""
+        clear()
+        self.print_header()
+        print("\n  VILLAGE BUILD MODE")
+        print("  " + "-" * 50)
+        
+        from bot.presets import PRESETS, get_preset_summary
+        from bot.construction import upgrade_all_buildings, upgrade_all_resources, HEADERS
+        
+        print("\n  Choose a Build Preset:\n")
+        for pid, preset in PRESETS.items():
+            res_info = f"Resources→{preset['resource_target']}" if preset['resource_target'] else "Resources→SKIP"
+            print(f"  [{pid}] {preset['name']}")
+            print(f"      {preset['description'][:50]}...")
+            print(f"      {res_info} | {len(preset['buildings'])} buildings")
+            print()
+        
+        print("  [5] Custom Target Level (All existing buildings)")
+        print("  [b] Back")
+        
+        choice = input("\n  > ").strip().lower()
+        if choice == 'b':
+            return
             
-            buildings = await self.fetch_buildings()
+        task_name = "Village Build"
+        target_coro = None
+        
+        if choice in PRESETS:
+            preset = PRESETS[choice]
+            print(f"\n  ✓ Selected: {preset['name']}")
+            print(f"    Resources: {'Level ' + str(preset['resource_target']) if preset['resource_target'] else 'SKIP'}")
+            print(f"    Buildings: {len(preset['buildings'])} total")
             
-            print(f"\n  {'Pos':<5} {'Building':<25} {'Level':<10}")
-            print("  " + "-" * 45)
-            for b in buildings:
-                print(f"  {b['pos']:<5} {b['name']:<25} {b['level']:<10}")
+            confirm = input("\n  Start build? [y/N]: ").strip().lower()
+            if confirm != 'y':
+                return
             
-            print("\n  Enter position to upgrade, or [b] to go back")
-            choice = input("  > ").strip().lower()
+            task_name = f"Build: {preset['name']}"
+            resource_target = preset['resource_target']
             
-            if choice == 'b':
-                break
-            elif choice.isdigit():
-                pos = int(choice)
-                # For buildings, we need building ID - simplified here
-                loops = input(f"  Upgrade loops for position {pos} [1]: ").strip()
-                loops = int(loops) if loops.isdigit() else 1
-                print(f"\n  Upgrading position {pos} ({loops} times)...")
-                await self.upgrade_building(pos, 0, loops)  # building_id=0 for existing buildings
-                print("  Done!")
-                await asyncio.sleep(1)
+            async def preset_wrapper():
+                self.tm.log(f"Started: {preset['name']}")
+                
+                # Step 1: Upgrade resource fields if target > 0
+                if resource_target > 0:
+                    self.tm.log(f"Upgrading resource fields to level {resource_target}...")
+                    await upgrade_all_resources(self.cookies, self.server_url, resource_target, lambda msg: self.tm.log(msg))
+                else:
+                    self.tm.log("Skipping resource fields (Quick Settle mode)")
+                
+                # Step 2: Upgrade buildings to their target levels
+                # For now, upgrade all existing buildings to level 20 (simplified)
+                # TODO: Implement full preset-specific building construction
+                self.tm.log("Upgrading buildings...")
+                await upgrade_all_buildings(self.cookies, self.server_url, 20, lambda msg: self.tm.log(msg))
+                
+                self.tm.log(f"Finished: {preset['name']}")
+            
+            target_coro = preset_wrapper()
+            
+        elif choice == '5':
+            target = input("  Target Level [20]: ").strip()
+            target = int(target) if target.isdigit() else 20
+            task_name = f"Upgrade Buildings → Lv {target}"
+            
+            async def all_wrapper():
+                self.tm.log(f"Started upgrading all buildings to Lv {target}")
+                await upgrade_all_buildings(self.cookies, self.server_url, target, lambda msg: self.tm.log(msg))
+                self.tm.log("Finished upgrading buildings")
+            
+            target_coro = all_wrapper()
+            
+        else:
+            print("  Invalid choice.")
+            await asyncio.sleep(1)
+            return
+
+        self.tm.add_task(task_name, target_coro)
+        print(f"\n  ✓ Task started in background!")
+        print(f"    Check Dashboard or [l] Logs for progress.")
+        await asyncio.sleep(2)
     
     async def village_selection_menu(self):
         """Village selection."""
@@ -421,6 +546,85 @@ class TravianCLI:
         
         input("\n  Press Enter to continue...")
 
+    async def increase_production_task(self, loops):
+        """Wrapper task for production."""
+        from bot.production import increase_production_async
+        self.tm.log(f"Starting production increase ({loops} loops)")
+        # Create a custom callback or pass db connection
+        # For now reusing existing function which prints to stdout (might interfere with UI slightly but OK)
+        await increase_production_async(self.username, "", loops, self.conn, self.cookies)
+        self.tm.log("Finished production increase")
+
+    async def increase_storage_task(self, loops):
+        """Wrapper task for storage."""
+        from bot.storage import increase_storage_async
+        self.tm.log(f"Starting storage increase ({loops} loops)")
+        await increase_storage_async(self.username, "", loops, self.conn, self.cookies)
+        self.tm.log("Finished storage increase")
+
+    async def view_logs(self):
+        """View full log history."""
+        while True:
+            clear()
+            print("=" * 60)
+            print("  SYSTEM LOGS")
+            print("=" * 60)
+            for log in self.tm.logs[-20:]:
+                print(f"  {log}")
+            print("-" * 60)
+            print("  [b] Back")
+            if input("  > ").lower() == 'b':
+                break
+            await asyncio.sleep(0.5)
+
+    def print_dashboard(self):
+        """Print full dashboard with stats and tasks."""
+        print("=" * 60)
+        print(f"  TRAVIAN BOT | {self.username} @ {self.server_name}")
+        
+        # Village Info
+        v_name = self.current_village['name'] if self.current_village else "Unknown"
+        v_coords = f"({self.current_village['x']}|{self.current_village['y']})" if self.current_village else ""
+        print(f"  Village: {v_name} {v_coords}")
+        
+        # Resources
+        print("-" * 60)
+        if self.resources:
+            w = self.resources.get('wood', '0')
+            c = self.resources.get('clay', '0')
+            i = self.resources.get('iron', '0')
+            cr = self.resources.get('crop', '0')
+            ware = self.resources.get('warehouse', '0')
+            gran = self.resources.get('granary', '0')
+            
+            print(f"  Wood: {format_number(w):<10} Clay: {format_number(c):<10}")
+            print(f"  Iron: {format_number(i):<10} Crop: {format_number(cr):<10}")
+            print(f"  Ware: {format_number(ware):<10} Gran: {format_number(gran):<10}")
+        else:
+            print("  Fetching resources...")
+            
+        print("-" * 60)
+        
+        # Active Tasks
+        active_tasks = self.tm.get_active_tasks()
+        if active_tasks:
+            print(f"  ACTIVE TASKS ({len(active_tasks)})")
+            for t in active_tasks:
+                duration = datetime.now() - t['start_time']
+                print(f"  • {t['name']} - {str(duration).split('.')[0]} elapsed")
+        else:
+            print("  No active tasks.")
+            
+        # Recent Log (last 1 line)
+        if self.tm.logs:
+            print("-" * 60)
+            print(f"  Last Log: {self.tm.logs[-1]}")
+        
+        print("=" * 60)
+
+    def print_header(self):
+        """Alias for print_dashboard for backwards compatibility."""
+        self.print_dashboard()
 
 async def main():
     """Main entry point."""
@@ -432,27 +636,93 @@ async def main():
     
     cli = TravianCLI()
     
-    # Login
-    username = input("  Username: ").strip()
-    password = input("  Password: ").strip()
+    # Login credentials with defaults
+    print("  Press Enter for defaults (abaddon/bristleback)")
+    username = input("  Username [abaddon]: ").strip() or "abaddon"
+    password = input("  Password [bristleback]: ").strip() or "bristleback"
     
-    print("\n  Logging in...")
+    print("\n  Logging in to gotravspeed.com...")
     
     try:
-        if await cli.login(username, password):
-            print("  Login successful!")
+        # Fetch available servers first
+        from bot.session_manager import SessionManager
+        servers = await SessionManager.fetch_servers(username, password)
+        
+        if servers is None:
+            print("\n  ❌ Login failed! Check your credentials.")
+            return
+        
+        if not servers:
+            print("\n  ❌ No servers available!")
+            return
+        
+        # Display servers - separate registered vs not
+        clear()
+        print("=" * 60)
+        print("  SERVER SELECTION")
+        print("=" * 60)
+        
+        # Check if server has 'registered' flag (from fetch_servers)
+        # For now we mark first 2 as "My Servers" based on typical pattern
+        my_servers = [s for s in servers if s.get('registered', False)]
+        other_servers = [s for s in servers if not s.get('registered', False)]
+        
+        if my_servers:
+            print("\n  💾 MY SERVERS (Already Registered)")
+            print(f"  {'ID':<4} {'Name':<12} {'Speed':<18} {'Players'}")
+            print("  " + "-" * 50)
+            for s in my_servers:
+                print(f"  {s['id']:<4} {s['name']:<12} {s['speed']:<18} {s['players']}")
+        
+        print("\n  🌍 ALL SERVERS")
+        print(f"  {'ID':<4} {'Name':<12} {'Speed':<18} {'Players'}")
+        print("  " + "-" * 50)
+        print("  " + "-" * 50)
+        
+        for s in servers:
+            print(f"  {s['id']:<4} {s['name']:<12} {s['speed']:<18} {s['players']}")
+        
+        print()
+        server_choice = input("  Enter server ID [9]: ").strip()
+        server_id = int(server_choice) if server_choice.isdigit() else 9
+        
+        # Find server name
+        server_name = "Fun"
+        for s in servers:
+            if s['id'] == server_id:
+                server_name = s['name']
+                break
+        
+        # Check if user needs to select tribe (new registration)
+        print(f"\n  Connecting to {server_name} (ID: {server_id})...")
+        
+        # Try login first
+        if await cli.login(username, password, server_id):
+            print("  ✅ Connected!")
             await asyncio.sleep(1)
             await cli.main_menu()
         else:
-            print("\n  Login failed!")
-            print("  Possible causes:")
-            print("    - Invalid username/password")
-            print("    - Server is down or unreachable")
-            print("    - Network connection issue")
-            print("\n  Please try again later.")
+            # May need registration - ask for tribe
+            print("\n  ⚠️ Not registered on this server yet.")
+            print("\n  Select your tribe:")
+            print("  [1] Roman")
+            print("  [2] Teuton")
+            print("  [3] Gaul")
+            tribe = input("\n  Tribe (1/2/3) [1]: ").strip()
+            if tribe not in ['1', '2', '3']:
+                tribe = '1'
+            
+            tribe_names = {'1': 'Roman', '2': 'Teuton', '3': 'Gaul'}
+            print(f"\n  Registering as {tribe_names[tribe]}...")
+            
+            # TODO: Implement registration with tribe selection
+            print("\n  ❌ Registration not yet implemented.")
+            print("  Please register manually in browser first, then try again.")
+            
     except Exception as e:
         print(f"\n  Error: {e}")
-        print("  Please check your network connection and try again.")
+        import traceback
+        traceback.print_exc()
 
 
 def run():
@@ -465,4 +735,3 @@ def run():
 
 if __name__ == "__main__":
     run()
-

@@ -1,85 +1,98 @@
 #!/usr/bin/env python3
 """
-Test: Re-login for each request.
+Debug: Resource field upgrade on Netus.
 """
 
 import asyncio
 import httpx
-import random
 from bs4 import BeautifulSoup
-from bot.session_manager import SessionManager
-from bot.database import init_db
+
+INITIAL_BASE_URL = "https://gotravspeed.com"
+SERVER_URL = "https://netus.gotravspeed.com"
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9',
+    'Accept-Language': 'en-US,en;q=0.9',
+}
 
 
 async def main():
     username = "abaddon"
     password = "bristleback"
+    server_id = 32
     
-    print("=" * 60)
-    print("TESTING WITH FRESH LOGIN EACH TIME")
-    print("=" * 60)
+    print("Logging into Netus...")
     
-    conn = init_db()
-    success = 0
-    
-    headers = {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9',
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Origin': 'https://fun.gotravspeed.com',
-        'Referer': 'https://fun.gotravspeed.com/buy2.php?t=2',
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-    }
-    
-    print(f"\n{'#':<3} {'Status':<6} {'Key':<8} {'Result'}")
-    print("-" * 40)
-    
-    for i in range(5):
-        # Fresh login each time
-        session_manager = SessionManager(username, password, "roman", conn)
-        cookies = await session_manager.login()
+    async with httpx.AsyncClient(follow_redirects=True, timeout=30.0, headers=HEADERS) as client:
+        await client.get(INITIAL_BASE_URL)
+        await client.post(INITIAL_BASE_URL, data={'name': username, 'password': password})
+        await client.get(INITIAL_BASE_URL + "/game/servers")
+        await client.post(INITIAL_BASE_URL + "/game/servers", data={'action': 'server', 'value': str(server_id)})
+        await client.post(INITIAL_BASE_URL + "/game/servers", data={'action': 'serverLogin', 'value[pid]': str(server_id), 'value[server]': str(server_id)})
         
-        if not cookies:
-            print(f"{i+1:<3} -      -        ❌ Login failed")
-            continue
+        # Get village1.php to see resource fields
+        print("\nFetching resource fields...")
+        response = await client.get(SERVER_URL + "/village1.php")
+        soup = BeautifulSoup(response.text, 'html.parser')
         
-        async with httpx.AsyncClient(cookies=cookies, headers=headers, follow_redirects=False) as client:
-            # Get key
-            response = await client.get("https://fun.gotravspeed.com/buy2.php?t=2")
-            soup = BeautifulSoup(response.text, 'html.parser')
-            key_input = soup.find('input', {'name': 'key'})
-            key = key_input['value'] if key_input else 'N/A'
-            
-            # Random coordinates
-            x = random.randint(710, 730)
-            y = random.randint(578, 590)
-            
-            data = {
-                'selected_res': '4',
-                'xor': '100',
-                'key_x': str(x),
-                'key_y': str(y),
-                'key': key
-            }
-            
-            response = await client.post(
-                "https://fun.gotravspeed.com/buy2.php?t=2&Shop=done",
-                data=data
-            )
-            
-            status = response.status_code
-            
-            if status == 302:
-                result = "✅ 302!"
-                success += 1
-            else:
-                result = "❌ FAIL"
-            
-            print(f"{i+1:<3} {status:<6} {key:<8} {result}")
+        # Check for map areas
+        map_div = soup.find('div', id='village_map')
+        if map_div:
+            areas = map_div.find_all('area')
+            print(f"Found {len(areas)} map areas")
+            for area in areas[:5]:
+                print(f"  {area.get('href', '')} - {area.get('title', '')[:40]}")
+        else:
+            print("No village_map div found")
         
-        await asyncio.sleep(0.5)
-    
-    print("-" * 40)
-    print(f"\n📊 Success: {success}/5")
+        # Try build.php?id=1 directly
+        print("\n--- Checking build.php?id=1 ---")
+        response = await client.get(SERVER_URL + "/build.php?id=1")
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        title = soup.find('title')
+        print(f"Page title: {title.text if title else 'N/A'}")
+        
+        # Find building/field name
+        h1 = soup.find('h1')
+        print(f"H1: {h1.text if h1 else 'N/A'}")
+        
+        # Find current level
+        level_span = soup.find('span', class_='level')
+        print(f"Level: {level_span.text if level_span else 'N/A'}")
+        
+        # Find upgrade link
+        build_link = soup.find('a', class_='build')
+        if build_link:
+            print(f"\n✅ Found upgrade link: {build_link.get('href', '')}")
+            print(f"   Text: {build_link.text.strip()[:50]}")
+        else:
+            print("\n❌ No 'a.build' link found")
+            
+            # Look for other build options
+            all_builds = soup.find_all('a', href=lambda x: x and 'k=' in str(x))
+            if all_builds:
+                print(f"   Found {len(all_builds)} links with k= (CSRF):")
+                for b in all_builds[:3]:
+                    print(f"     {b.get('href', '')[:60]}")
+        
+        # Check for build button (green)
+        green_btn = soup.find('button', class_='green') or soup.find('a', class_='green')
+        if green_btn:
+            print(f"\n✅ Found green button: {green_btn.text.strip()[:40]}")
+        
+        # Check for construction section
+        contract = soup.find('div', class_='contractBuilding') or soup.find('div', id='contract')
+        if contract:
+            print("\nContract/build section found")
+            links = contract.find_all('a')
+            for l in links[:3]:
+                print(f"  {l.get('href', '')[:60]} - {l.text.strip()[:30]}")
+        
+        # Save HTML for inspection
+        with open('/tmp/build_id1.html', 'w') as f:
+            f.write(response.text)
+        print("\n[Saved to /tmp/build_id1.html]")
 
 
 if __name__ == "__main__":
