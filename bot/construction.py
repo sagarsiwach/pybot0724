@@ -134,7 +134,8 @@ async def apply_preset(cookies, server_url: str, preset: dict, callback=None):
     2. For each building in preset, find or construct it
     3. Upgrade all buildings to their target levels
     """
-    async with httpx.AsyncClient(cookies=cookies, headers=HEADERS) as client:
+    import asyncio
+    async with httpx.AsyncClient(cookies=cookies, headers=HEADERS, timeout=30.0) as client:
         # Step 1: Scan all positions to see what's already built
         if callback:
             callback("Scanning existing buildings...")
@@ -143,34 +144,55 @@ async def apply_preset(cookies, server_url: str, preset: dict, callback=None):
         
         import re
         for pos in range(19, 41):
-            response = await client.get(f"{server_url}/build.php?id={pos}")
-            soup = BeautifulSoup(response.text, "html.parser")
-            h1 = soup.find('h1')
+            # Add delay to avoid rate limiting
+            await asyncio.sleep(0.3)
             
-            if h1:
-                text = h1.text.strip()
-                text_lower = text.lower()
+            try:
+                response = await client.get(f"{server_url}/build.php?id={pos}")
                 
-                if 'construction' in text_lower or 'new building' in text_lower:
-                    position_data[pos] = {'name': None, 'level': 0, 'is_empty': True}
-                else:
-                    # Extract name and level using regex (case insensitive)
-                    # Example: "Main Building level 10" -> name="Main Building", level=10
-                    match = re.match(r'^(.+?)\s+level\s*(\d+)', text, re.IGNORECASE)
-                    if match:
-                        bname = match.group(1).strip()
-                        level = int(match.group(2))
-                    else:
-                        bname = text
-                        level = 1
-                    position_data[pos] = {'name': bname, 'level': level, 'is_empty': False}
+                # Handle rate limiting
+                if response.status_code == 503:
                     if callback:
-                        callback(f"  [{pos}] {bname} (Lv {level})")
+                        callback(f"  [{pos}] Rate limited, waiting...")
+                    await asyncio.sleep(2)
+                    response = await client.get(f"{server_url}/build.php?id={pos}")
+                
+                soup = BeautifulSoup(response.text, "html.parser")
+                h1 = soup.find('h1')
+                
+                if h1:
+                    text = h1.text.strip()
+                    text_lower = text.lower()
+                    
+                    # Skip error pages
+                    if '503' in text or 'error' in text_lower or 'unavailable' in text_lower:
+                        if callback:
+                            callback(f"  [{pos}] Server error, skipping")
+                        continue
+                    
+                    if 'construction' in text_lower or 'new building' in text_lower:
+                        position_data[pos] = {'name': None, 'level': 0, 'is_empty': True}
+                    else:
+                        # Extract name and level using regex (case insensitive)
+                        match = re.match(r'^(.+?)\s+level\s*(\d+)', text, re.IGNORECASE)
+                        if match:
+                            bname = match.group(1).strip()
+                            level = int(match.group(2))
+                        else:
+                            bname = text
+                            level = 1
+                        position_data[pos] = {'name': bname, 'level': level, 'is_empty': False}
+                        if callback:
+                            callback(f"  [{pos}] {bname} (Lv {level})")
+            except Exception as e:
+                if callback:
+                    callback(f"  [{pos}] Error: {e}")
+                continue
         
         # Show what was found
         empty_count = sum(1 for p in position_data.values() if p['is_empty'])
         if callback:
-            callback(f"Summary: {22 - empty_count} buildings, {empty_count} empty slots")
+            callback(f"Summary: {len(position_data) - empty_count} buildings, {empty_count} empty slots")
         
         # Step 2: Process each building in preset
         buildings_to_build = preset.get('buildings', [])
@@ -220,6 +242,8 @@ async def apply_preset(cookies, server_url: str, preset: dict, callback=None):
                     if callback:
                         callback(f"  Building {name} at slot {empty_pos}...")
                     
+                    # Delay before construction
+                    await asyncio.sleep(0.5)
                     success = await construct_building(client, server_url, empty_pos, bid)
                     if success:
                         existing_pos = empty_pos
