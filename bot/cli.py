@@ -1001,8 +1001,97 @@ async def main():
         traceback.print_exc()
 
 
+async def main_auto():
+    """
+    Auto-login version - directly connects to Fun server with saved credentials.
+    """
+    clear()
+    print("\n  " + "=" * 50)
+    print("  TRAVIAN BOT - Auto Login")
+    print("  " + "=" * 50)
+    
+    # Hardcoded credentials for quick access
+    username = "abaddon"
+    password = "qwerty12"
+    server_id = 9  # Fun server
+    
+    print(f"\n  Logging in as {username} to Fun server...")
+    
+    cli = TravianCLI(username, password)
+    
+    if await cli.login(username, password, server_id):
+        print("  ✅ Connected!")
+        await asyncio.sleep(0.5)
+        await cli.main_menu()
+    else:
+        print("  ❌ Login failed!")
+        print("  Try manual login with: tbot-manual")
+
+
+def arrow_menu(title: str, options: list) -> int:
+    """
+    Display a menu with arrow key navigation.
+    Returns the selected index (0-based).
+    
+    Args:
+        title: Menu title
+        options: List of option strings
+    """
+    import sys
+    import tty
+    import termios
+    
+    selected = 0
+    
+    def get_key():
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            ch = sys.stdin.read(1)
+            if ch == '\x1b':  # Escape sequence
+                ch += sys.stdin.read(2)
+            return ch
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    
+    while True:
+        # Clear and draw menu
+        clear()
+        print(f"\n  {title}")
+        print("  " + "-" * 40)
+        print("  Use ↑/↓ arrows, Enter to select, q to quit\n")
+        
+        for i, opt in enumerate(options):
+            if i == selected:
+                print(f"  → [{i+1}] {opt}")
+            else:
+                print(f"    [{i+1}] {opt}")
+        
+        key = get_key()
+        
+        if key == '\x1b[A':  # Up arrow
+            selected = (selected - 1) % len(options)
+        elif key == '\x1b[B':  # Down arrow
+            selected = (selected + 1) % len(options)
+        elif key == '\r' or key == '\n':  # Enter
+            return selected
+        elif key == 'q' or key == '\x1b':  # q or Escape
+            return -1
+        elif key.isdigit() and 1 <= int(key) <= len(options):
+            return int(key) - 1
+
+
 def run():
-    """Entry point for package."""
+    """Entry point for package - auto login."""
+    try:
+        asyncio.run(main_auto())
+    except KeyboardInterrupt:
+        print("\n\n  Interrupted. Goodbye!")
+
+
+def run_manual():
+    """Entry point for manual login."""
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
@@ -1011,3 +1100,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+

@@ -18,6 +18,8 @@ dependencies = [
 travian-bot = "bot.bot:main"
 travian-tui = "bot.tui:main"
 travian-cli = "bot.cli:run"
+tbot = "bot.cli:run"
+tbot-manual = "bot.cli:run_manual"
 
 [build-system]
 requires = ["hatchling"]
