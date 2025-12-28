@@ -141,6 +141,7 @@ async def apply_preset(cookies, server_url: str, preset: dict, callback=None):
         
         position_data = {}  # pos -> {'name': str, 'level': int, 'is_empty': bool}
         
+        import re
         for pos in range(19, 41):
             response = await client.get(f"{server_url}/build.php?id={pos}")
             soup = BeautifulSoup(response.text, "html.parser")
@@ -153,20 +154,23 @@ async def apply_preset(cookies, server_url: str, preset: dict, callback=None):
                 if 'construction' in text_lower or 'new building' in text_lower:
                     position_data[pos] = {'name': None, 'level': 0, 'is_empty': True}
                 else:
-                    # Extract name and level
-                    name = text.split(' level')[0].strip() if ' level' in text.lower() else text
-                    level = 0
-                    if 'level' in text.lower():
-                        try:
-                            level = int(text.lower().split('level')[1].strip().split()[0])
-                        except:
-                            level = 1
-                    position_data[pos] = {'name': name, 'level': level, 'is_empty': False}
+                    # Extract name and level using regex (case insensitive)
+                    # Example: "Main Building level 10" -> name="Main Building", level=10
+                    match = re.match(r'^(.+?)\s+level\s*(\d+)', text, re.IGNORECASE)
+                    if match:
+                        bname = match.group(1).strip()
+                        level = int(match.group(2))
+                    else:
+                        bname = text
+                        level = 1
+                    position_data[pos] = {'name': bname, 'level': level, 'is_empty': False}
+                    if callback:
+                        callback(f"  [{pos}] {bname} (Lv {level})")
         
         # Show what was found
         empty_count = sum(1 for p in position_data.values() if p['is_empty'])
         if callback:
-            callback(f"Found {22 - empty_count} buildings, {empty_count} empty slots")
+            callback(f"Summary: {22 - empty_count} buildings, {empty_count} empty slots")
         
         # Step 2: Process each building in preset
         buildings_to_build = preset.get('buildings', [])
