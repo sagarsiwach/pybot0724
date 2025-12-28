@@ -517,9 +517,10 @@ class TravianCLI:
             else:
                 print_log("Skipping resource fields (Quick Settle mode)")
             
-            # Step 2: Upgrade buildings
-            print_log("Upgrading buildings...")
-            await upgrade_all_buildings(self.cookies, self.server_url, 20, print_log)
+            # Step 2: Apply preset - this constructs AND upgrades buildings
+            print_log("Building preset buildings...")
+            from bot.construction import apply_preset
+            await apply_preset(self.cookies, self.server_url, preset, print_log)
             
             print("  " + "=" * 50)
             print(f"  ✓ Done: {preset['name']}")

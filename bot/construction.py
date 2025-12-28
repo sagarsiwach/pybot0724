@@ -135,6 +135,7 @@ async def apply_preset(cookies, server_url: str, preset: dict, callback=None):
     """
     async with httpx.AsyncClient(cookies=cookies, headers=HEADERS) as client:
         buildings_to_build = preset.get('buildings', [])
+        built_positions = set()  # Track positions we've built/used
         
         for building in buildings_to_build:
             bid = building['bid']
@@ -143,41 +144,83 @@ async def apply_preset(cookies, server_url: str, preset: dict, callback=None):
             count = building.get('count', 1)  # For multiple warehouses/granaries
             
             for i in range(count):
-                # Check if this building type already exists
-                existing_pos = await find_building_position(client, server_url, name)
+                if callback:
+                    if count > 1:
+                        callback(f"Processing: {name} ({i+1}/{count})...")
+                    else:
+                        callback(f"Processing: {name}...")
+                
+                # Check if this building type already exists at a position we haven't used
+                existing_pos = -1
+                for pos in range(19, 41):
+                    if pos in built_positions:
+                        continue
+                    response = await client.get(f"{server_url}/build.php?id={pos}")
+                    soup = BeautifulSoup(response.text, "html.parser")
+                    h1 = soup.find('h1')
+                    if h1:
+                        text = h1.text.lower()
+                        if name.lower() in text and 'construction' not in text:
+                            existing_pos = pos
+                            built_positions.add(pos)
+                            break
                 
                 if existing_pos == -1:
-                    # Need to construct new
+                    # Need to construct new building
                     empty_slot = await find_empty_slot(client, server_url)
                     if empty_slot == -1:
                         if callback:
-                            callback(f"No empty slots! Cannot build {name}")
+                            callback(f"✗ No empty slots! Cannot build {name}")
                         continue
                     
                     if callback:
-                        callback(f"Constructing {name} at slot {empty_slot}...")
+                        callback(f"Building {name} at slot {empty_slot}...")
                     
                     success = await construct_building(client, server_url, empty_slot, bid)
                     if success:
                         existing_pos = empty_slot
+                        built_positions.add(empty_slot)
+                        if callback:
+                            callback(f"✓ {name} constructed at slot {existing_pos}")
                     else:
                         if callback:
-                            callback(f"Failed to construct {name}")
+                            callback(f"✗ Failed to construct {name}")
                         continue
+                else:
+                    if callback:
+                        callback(f"Found existing {name} at slot {existing_pos}")
                 
                 # Now upgrade to target level
                 if existing_pos > 0 and target_level > 1:
-                    if callback:
-                        callback(f"Upgrading {name} to level {target_level}...")
+                    # Get current level
+                    info = await get_field_info(client, server_url, existing_pos)
+                    current = info['level']
                     
-                    for _ in range(target_level - 1):
+                    if current >= target_level:
+                        if callback:
+                            callback(f"✓ {name} already at level {current}")
+                        continue
+                    
+                    if callback:
+                        callback(f"Upgrading {name} from {current} to {target_level}...")
+                    
+                    while current < target_level:
                         info = await get_field_info(client, server_url, existing_pos)
-                        if info['level'] >= target_level:
+                        current = info['level']
+                        if current >= target_level:
                             break
                         if info['upgrade_url']:
                             await client.get(f"{server_url}/{info['upgrade_url']}")
                             if callback:
-                                callback(f"{name} → Level {info['level'] + 1}")
+                                callback(f"  {name} → Level {current + 1}")
+                            current += 1
+                        else:
+                            if callback:
+                                callback(f"  Cannot upgrade {name} further")
+                            break
+                    
+                    if callback:
+                        callback(f"✓ {name} at level {current}")
 
 
 async def find_building_position(client, server_url: str, building_name: str) -> int:
